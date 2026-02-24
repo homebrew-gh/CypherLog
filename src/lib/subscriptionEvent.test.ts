@@ -117,6 +117,7 @@ describe('subscriptionEvent', () => {
           companyId: 'company-abc',
           companyName: 'FitCo',
           notes: 'Annual discount applied',
+          startDate: '01/15/2024',
         },
         existingEvent: null,
       });
@@ -124,6 +125,7 @@ describe('subscriptionEvent', () => {
       expect(tags.find(([n]) => n === 'company_id')?.[1]).toBe('company-abc');
       expect(tags.find(([n]) => n === 'company_name')?.[1]).toBe('FitCo');
       expect(tags.find(([n]) => n === 'notes')?.[1]).toBe('Annual discount applied');
+      expect(tags.find(([n]) => n === 'start_date')?.[1]).toBe('01/15/2024');
     });
   });
 

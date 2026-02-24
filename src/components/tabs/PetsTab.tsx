@@ -1,17 +1,20 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, ChevronDown, ChevronRight, List, LayoutGrid, Calendar, Archive, ArrowLeft, PawPrint, Dog, Cat, Bird, Fish, Rabbit, Tractor } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, List, LayoutGrid, Calendar, Archive, ArchiveRestore, ArrowLeft, PawPrint, Dog, Cat, Bird, Fish, Rabbit, Tractor, MoreVertical, Edit, Trash2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { PetDialog } from '@/components/PetDialog';
 import { PetDetailDialog } from '@/components/PetDetailDialog';
 import { BlossomImage } from '@/components/BlossomMedia';
-import { usePets } from '@/hooks/usePets';
+import { usePets, usePetActions } from '@/hooks/usePets';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
+import { toast } from '@/hooks/useToast';
 import type { Pet } from '@/lib/types';
 
 // Get icon based on pet type
@@ -42,6 +45,7 @@ interface PetsTabProps {
 export function PetsTab({ scrollTarget }: PetsTabProps) {
   const navigate = useNavigate();
   const { data: pets = [], isLoading } = usePets();
+  const { archivePet, deletePet } = usePetActions();
   const { preferences, setPetsViewMode } = useUserPreferences();
   const viewMode = preferences.petsViewMode;
 
@@ -52,6 +56,8 @@ export function PetsTab({ scrollTarget }: PetsTabProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPet, setEditingPet] = useState<Pet | undefined>();
   const [viewingPet, setViewingPet] = useState<Pet | undefined>(); // For archived pets only
+  const [petToDelete, setPetToDelete] = useState<Pet | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Collapsed types state (for list view)
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
@@ -137,6 +143,42 @@ export function PetsTab({ scrollTarget }: PetsTabProps) {
   const handleEditPet = (pet: Pet) => {
     setEditingPet(pet);
     setDialogOpen(true);
+  };
+
+  const handleArchivePet = async (pet: Pet) => {
+    try {
+      await archivePet(pet.id, !pet.isArchived);
+      toast({
+        title: pet.isArchived ? 'Pet restored' : 'Pet archived',
+        description: pet.isArchived ? 'The pet has been restored from archive.' : 'The pet has been archived.',
+      });
+      if (pet.isArchived) setViewingPet(undefined);
+    } catch {
+      toast({
+        title: 'Error',
+        description: 'Failed to update pet. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeletePet = async () => {
+    if (!petToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deletePet(petToDelete.id);
+      toast({ title: 'Pet removed', description: 'The pet has been removed.' });
+      setPetToDelete(null);
+      setViewingPet(undefined);
+    } catch {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete pet. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handlePetClick = (pet: Pet) => {
@@ -332,32 +374,73 @@ export function PetsTab({ scrollTarget }: PetsTabProps) {
                   <CollapsibleContent>
                     <div className="pl-8 py-2 space-y-1">
                       {petsByType.grouped[type].map((pet) => (
-                        <button
+                        <div
                           key={pet.id}
-                          onClick={() => handlePetClick(pet)}
-                          className="flex items-center gap-2 w-full p-2 rounded-lg text-left hover:bg-primary/5 transition-colors group"
+                          className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-primary/5 transition-colors group"
                         >
-                          {pet.photoUrl ? (
-                            <BlossomImage 
-                              src={pet.photoUrl} 
-                              alt={pet.name}
-                              className="h-8 w-8 rounded-full object-cover"
-                              showSkeleton={false}
-                            />
-                          ) : (
-                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                              <PawPrint className="h-4 w-4 text-primary" />
-                            </div>
-                          )}
-                          <span className="text-muted-foreground group-hover:text-primary">
-                            {pet.name}
-                          </span>
-                          {(pet.species || pet.breed) && (
-                            <span className="text-sm text-slate-400 dark:text-slate-500">
-                              - {[pet.species, pet.breed].filter(Boolean).join(' ')}
+                          <button
+                            onClick={() => handlePetClick(pet)}
+                            className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                          >
+                            {pet.photoUrl ? (
+                              <BlossomImage 
+                                src={pet.photoUrl} 
+                                alt={pet.name}
+                                className="h-8 w-8 rounded-full object-cover shrink-0"
+                                showSkeleton={false}
+                              />
+                            ) : (
+                              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                <PawPrint className="h-4 w-4 text-primary" />
+                              </div>
+                            )}
+                            <span className="text-muted-foreground group-hover:text-primary truncate">
+                              {pet.name}
                             </span>
-                          )}
-                        </button>
+                            {(pet.species || pet.breed) && (
+                              <span className="text-sm text-slate-400 dark:text-slate-500 truncate hidden sm:inline">
+                                - {[pet.species, pet.breed].filter(Boolean).join(' ')}
+                              </span>
+                            )}
+                          </button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0 opacity-70 hover:opacity-100"
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label="Pet actions"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenuItem onClick={() => handlePetClick(pet)}>
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                View full page
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleEditPet(pet)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleArchivePet(pet)}>
+                                {pet.isArchived ? (
+                                  <><ArchiveRestore className="h-4 w-4 mr-2" /> Restore</>
+                                ) : (
+                                  <><Archive className="h-4 w-4 mr-2" /> Archive</>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setPetToDelete(pet)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       ))}
                     </div>
                   </CollapsibleContent>
@@ -396,6 +479,9 @@ export function PetsTab({ scrollTarget }: PetsTabProps) {
                         key={pet.id}
                         pet={pet}
                         onClick={() => handlePetClick(pet)}
+                        onEdit={() => handleEditPet(pet)}
+                        onArchive={() => handleArchivePet(pet)}
+                        onDelete={() => setPetToDelete(pet)}
                       />
                     ))}
                   </div>
@@ -425,6 +511,28 @@ export function PetsTab({ scrollTarget }: PetsTabProps) {
           onDelete={() => setViewingPet(undefined)}
         />
       )}
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!petToDelete} onOpenChange={(open) => !open && setPetToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete pet?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove {petToDelete?.name ?? 'this pet'} and all associated vet visits and records. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeletePet}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
@@ -432,13 +540,57 @@ export function PetsTab({ scrollTarget }: PetsTabProps) {
 interface PetCardProps {
   pet: Pet;
   onClick: () => void;
+  onEdit: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
 }
 
-function PetCard({ pet, onClick }: PetCardProps) {
+function PetCard({ pet, onClick, onEdit, onArchive, onDelete }: PetCardProps) {
   const PetIcon = getPetIcon(pet.petType);
 
   return (
     <div className="group relative flex flex-col rounded-xl border-2 border-border bg-gradient-to-br from-card to-muted/30 hover:border-primary/50 hover:shadow-md transition-all duration-200 overflow-hidden">
+      {/* Actions menu - top right */}
+      <div className="absolute top-2 right-2 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8 shadow-md bg-background/90 hover:bg-background"
+              onClick={(e) => e.stopPropagation()}
+              aria-label="Pet actions"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onClick(); }}>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              View full page
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+              <Edit className="h-4 w-4 mr-2" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchive(); }}>
+              {pet.isArchived ? (
+                <><ArchiveRestore className="h-4 w-4 mr-2" /> Restore</>
+              ) : (
+                <><Archive className="h-4 w-4 mr-2" /> Archive</>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
       {/* Clickable area for quick view */}
       <button
         onClick={onClick}

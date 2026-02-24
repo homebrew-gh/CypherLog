@@ -28,14 +28,15 @@ function getTagValue(event: NostrEvent, tagName: string): string | undefined {
 type SubscriptionData = Omit<Subscription, 'id' | 'pubkey' | 'createdAt'>;
 
 // Parse a Nostr event into a Subscription object (plaintext version)
+// Uses defaults for display fields so interop tags (name, cost, etc.) always yield a subscription when d is present.
 function parseSubscriptionPlaintext(event: NostrEvent): Subscription | null {
   const id = getTagValue(event, 'd');
-  const name = getTagValue(event, 'name');
-  const subscriptionType = getTagValue(event, 'subscription_type');
-  const cost = getTagValue(event, 'cost');
-  const billingFrequency = getTagValue(event, 'billing_frequency') as BillingFrequency;
+  if (!id) return null;
 
-  if (!id || !name || !subscriptionType || !cost || !billingFrequency) return null;
+  const name = getTagValue(event, 'name')?.trim() || 'Unnamed';
+  const subscriptionType = getTagValue(event, 'subscription_type')?.trim() || 'Other';
+  const cost = getTagValue(event, 'cost') ?? '0';
+  const billingFrequency = (getTagValue(event, 'billing_frequency') as BillingFrequency) || 'monthly';
 
   return {
     id,
@@ -207,8 +208,8 @@ export function useSubscriptionActions() {
       await cacheEvents([event]);
     }
 
-    // Refetch to ensure immediate data refresh after creating a subscription
-    await queryClient.refetchQueries({ queryKey: ['subscriptions', user.pubkey] });
+    // Invalidate so the list refetches from cache and shows the new subscription
+    await queryClient.invalidateQueries({ queryKey: ['subscriptions', user.pubkey] });
 
     return id;
   };
@@ -247,8 +248,7 @@ export function useSubscriptionActions() {
       await cacheEvents([event]);
     }
 
-    // Refetch to ensure immediate data refresh after updating a subscription
-    await queryClient.refetchQueries({ queryKey: ['subscriptions', user.pubkey] });
+    await queryClient.invalidateQueries({ queryKey: ['subscriptions', user.pubkey] });
   };
 
   const archiveSubscription = async (id: string, isArchived: boolean) => {

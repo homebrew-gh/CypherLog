@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CreditCard, Building, Calendar, DollarSign, Tag, FileText, Trash2, Pencil, ExternalLink, Package, Car, TreePine, ChevronRight } from 'lucide-react';
+import { CreditCard, Building, Calendar, DollarSign, Tag, FileText, Trash2, Pencil, ExternalLink, Package, Car, TreePine, ChevronRight, PlayCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -153,6 +153,15 @@ export function SubscriptionDetailDialog({
                 </div>
                 <p className="font-medium">{billingLabel}</p>
               </div>
+              {subscription.startDate && (
+                <div className="space-y-1 col-span-2 sm:col-span-1">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <PlayCircle className="h-4 w-4" />
+                    Started
+                  </div>
+                  <p className="font-medium">{subscription.startDate}</p>
+                </div>
+              )}
             </div>
 
             <Separator />

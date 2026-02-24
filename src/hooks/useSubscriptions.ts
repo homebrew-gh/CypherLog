@@ -9,6 +9,7 @@ import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import { useEncryption, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { SUBSCRIPTION_KIND, type Subscription, type BillingFrequency, type LinkedAssetType } from '@/lib/types';
+import { buildSubscriptionTags } from '@/lib/subscriptionEvent';
 import { cacheEvents, getCachedEvents, deleteCachedEventByAddress } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
@@ -185,33 +186,14 @@ export function useSubscriptionActions() {
     const id = crypto.randomUUID();
     const useEncryption = isEncryptionEnabled('subscriptions');
 
-    // Base tags (always included)
-    const tags: string[][] = [
-      ['d', id],
-      ['alt', useEncryption ? 'Encrypted Cypher Log subscription data' : `Subscription: ${data.name}`],
-    ];
+    // Canonical tags for FiatLife/interop: always emit so other clients can render without decrypting
+    const tags = buildSubscriptionTags({ id, data, existingEvent: null });
 
     let content = '';
-
     let dualPublish: { plainContent: string } | undefined;
     if (useEncryption && shouldEncrypt('subscriptions')) {
       content = await encryptForCategory('subscriptions', data);
       dualPublish = { plainContent: JSON.stringify(data) };
-    } else {
-      // Store data in plaintext tags
-      tags.push(['name', data.name]);
-      tags.push(['subscription_type', data.subscriptionType]);
-      tags.push(['cost', data.cost]);
-      tags.push(['billing_frequency', data.billingFrequency]);
-      
-      if (data.currency) tags.push(['currency', data.currency]);
-      if (data.companyId) tags.push(['company_id', data.companyId]);
-      if (data.companyName) tags.push(['company_name', data.companyName]);
-      if (data.linkedAssetType) tags.push(['linked_asset_type', data.linkedAssetType]);
-      if (data.linkedAssetId) tags.push(['linked_asset_id', data.linkedAssetId]);
-      if (data.linkedAssetName) tags.push(['linked_asset_name', data.linkedAssetName]);
-      if (data.notes) tags.push(['notes', data.notes]);
-      if (data.isArchived) tags.push(['is_archived', 'true']);
     }
 
     const event = await publishEvent({
@@ -236,33 +218,22 @@ export function useSubscriptionActions() {
 
     const useEncryption = isEncryptionEnabled('subscriptions');
 
-    // Base tags (always included)
-    const tags: string[][] = [
-      ['d', id],
-      ['alt', useEncryption ? 'Encrypted Cypher Log subscription data' : `Subscription: ${data.name}`],
-    ];
+    // Preserve unknown tags from existing event (round-trip safe)
+    let existingEvent: NostrEvent | null = null;
+    try {
+      const cached = await getCachedEvents([SUBSCRIPTION_KIND], user.pubkey);
+      existingEvent = cached.find((e) => e.tags.find(([t]) => t === 'd')?.[1] === id) ?? null;
+    } catch {
+      // proceed without preserving unknown tags
+    }
+
+    const tags = buildSubscriptionTags({ id, data, existingEvent });
 
     let content = '';
-
     let dualPublish: { plainContent: string } | undefined;
     if (useEncryption && shouldEncrypt('subscriptions')) {
       content = await encryptForCategory('subscriptions', data);
       dualPublish = { plainContent: JSON.stringify(data) };
-    } else {
-      // Store data in plaintext tags
-      tags.push(['name', data.name]);
-      tags.push(['subscription_type', data.subscriptionType]);
-      tags.push(['cost', data.cost]);
-      tags.push(['billing_frequency', data.billingFrequency]);
-      
-      if (data.currency) tags.push(['currency', data.currency]);
-      if (data.companyId) tags.push(['company_id', data.companyId]);
-      if (data.companyName) tags.push(['company_name', data.companyName]);
-      if (data.linkedAssetType) tags.push(['linked_asset_type', data.linkedAssetType]);
-      if (data.linkedAssetId) tags.push(['linked_asset_id', data.linkedAssetId]);
-      if (data.linkedAssetName) tags.push(['linked_asset_name', data.linkedAssetName]);
-      if (data.notes) tags.push(['notes', data.notes]);
-      if (data.isArchived) tags.push(['is_archived', 'true']);
     }
 
     const event = await publishEvent({

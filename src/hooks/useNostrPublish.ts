@@ -14,7 +14,7 @@ import type { NostrEvent } from "@nostrify/nostrify";
 // This allows other clients to identify events created by CypherLog
 // and enables discovery of CypherLog users among follows
 const CYPHERLOG_CLIENT_NAME = "Cypher Log";
-const CYPHERLOG_CLIENT_URL = "https://cypherlog.shakespeare.wtf";
+const CYPHERLOG_CLIENT_URL = "https://cypherlog.io";
 
 export type PublishEventInput = Omit<NostrEvent, 'id' | 'pubkey' | 'sig' | 'created_at' | 'tags'> & {
   created_at?: number;

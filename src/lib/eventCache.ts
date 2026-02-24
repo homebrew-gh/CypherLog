@@ -126,10 +126,12 @@ export function dedupeEventsByLogicalKey(events: NostrEvent[]): NostrEvent[] {
  * Generate a unique cache key for an event
  */
 function getCacheKey(event: NostrEvent): string {
-  // For addressable events (kind >= 30000), use kind:pubkey:d-tag
+  // For addressable events (kind >= 30000), use kind:pubkey:d-tag when d is present
   if (event.kind >= 30000) {
-    const dTag = event.tags.find(t => t[0] === 'd')?.[1] || '';
-    return `${event.kind}:${event.pubkey}:${dTag}`;
+    const dTag = event.tags.find(t => t[0] === 'd')?.[1] ?? '';
+    if (dTag) return `${event.kind}:${event.pubkey}:${dTag}`;
+    // No d tag (e.g. empty/minimal events from other clients): use event id so each is stored
+    return event.id;
   }
   // For regular events, use the event id
   return event.id;

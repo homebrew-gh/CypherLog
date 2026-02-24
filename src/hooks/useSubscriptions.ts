@@ -10,7 +10,7 @@ import { useEncryption, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { SUBSCRIPTION_KIND, type Subscription, type BillingFrequency, type LinkedAssetType } from '@/lib/types';
 import { buildSubscriptionTags } from '@/lib/subscriptionEvent';
-import { cacheEvents, getCachedEvents, deleteCachedEventByAddress } from '@/lib/eventCache';
+import { cacheEvents, getCachedEvents, deleteCachedEventByAddress, deleteCachedEventById } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
@@ -28,9 +28,9 @@ function getTagValue(event: NostrEvent, tagName: string): string | undefined {
 type SubscriptionData = Omit<Subscription, 'id' | 'pubkey' | 'createdAt'>;
 
 // Parse a Nostr event into a Subscription object (plaintext version)
-// Uses defaults for display fields so interop tags (name, cost, etc.) always yield a subscription when d is present.
+// Uses d-tag as id when present; otherwise event.id so empty/minimal events from other clients still show (and can be deleted).
 function parseSubscriptionPlaintext(event: NostrEvent): Subscription | null {
-  const id = getTagValue(event, 'd');
+  const id = getTagValue(event, 'd') || event.id;
   if (!id) return null;
 
   const name = getTagValue(event, 'name')?.trim() || 'Unnamed';
@@ -62,7 +62,7 @@ async function parseSubscriptionEncrypted(
   event: NostrEvent,
   decryptFn: (content: string) => Promise<SubscriptionData>
 ): Promise<Subscription | null> {
-  const id = getTagValue(event, 'd');
+  const id = getTagValue(event, 'd') || event.id;
   if (!id) return null;
 
   try {
@@ -80,18 +80,20 @@ async function parseSubscriptionEncrypted(
   }
 }
 
-// Extract deleted subscription IDs from kind 5 events
+// Extract deleted subscription IDs from kind 5 events (both addressable 'a' and event-id 'e' refs)
 function getDeletedSubscriptionIds(deletionEvents: NostrEvent[], pubkey: string): Set<string> {
   const deletedIds = new Set<string>();
 
   for (const event of deletionEvents) {
     for (const tag of event.tags) {
       if (tag[0] === 'a') {
-        // Parse "kind:pubkey:d-tag" format
         const parts = tag[1].split(':');
         if (parts.length >= 3 && parts[0] === String(SUBSCRIPTION_KIND) && parts[1] === pubkey) {
           deletedIds.add(parts[2]);
         }
+      }
+      if (tag[0] === 'e') {
+        deletedIds.add(tag[1]);
       }
     }
   }
@@ -116,7 +118,7 @@ async function parseEventsToSubscriptions(
     subscriptionEvents,
     DECRYPT_CONCURRENCY,
     async (event): Promise<Subscription | null> => {
-      const id = getTagValue(event, 'd');
+      const id = getTagValue(event, 'd') || event.id;
       if (!id || deletedIds.has(id)) return null;
       if (event.content?.startsWith(ENCRYPTED_MARKER)) {
         return parseSubscriptionEncrypted(event, (content) => decryptForCategory<SubscriptionData>(content));
@@ -266,6 +268,25 @@ export function useSubscriptionActions() {
   const deleteSubscription = async (id: string) => {
     if (!user) throw new Error('Must be logged in');
 
+    // Subscriptions without a d-tag use event.id as id (64-char hex). Delete those by event id.
+    const isEventId = /^[a-f0-9]{64}$/i.test(id);
+
+    if (isEventId) {
+      const tags: string[][] = [['e', id]];
+      const event = await publishEvent({
+        kind: 5,
+        content: 'Deleted subscription',
+        tags,
+      });
+      if (event) {
+        await cacheEvents([event]);
+        await deleteCachedEventById(id);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await queryClient.invalidateQueries({ queryKey: ['subscriptions', user.pubkey] });
+      return;
+    }
+
     const privateRelayUrls = (preferences.privateRelays ?? []).filter(isRelayUrlSecure);
     const publicRelayUrls = config.relayMetadata.relays
       .filter((r) => !privateRelayUrls.includes(r.url))
@@ -297,8 +318,8 @@ export function useSubscriptionActions() {
       await deleteCachedEventByAddress(SUBSCRIPTION_KIND, user.pubkey, id);
     }
 
-    await new Promise(resolve => setTimeout(resolve, 500));
-    await queryClient.refetchQueries({ queryKey: ['subscriptions'] });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await queryClient.invalidateQueries({ queryKey: ['subscriptions', user.pubkey] });
   };
 
   return { createSubscription, updateSubscription, deleteSubscription, archiveSubscription };

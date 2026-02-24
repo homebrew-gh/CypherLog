@@ -287,6 +287,8 @@ export interface Subscription {
   billingFrequency: BillingFrequency;
   /** When the subscription began (initial purchase/start date). MM/DD/YYYY. */
   startDate?: string;
+  /** Day-of-month due anchor derived from startDate when available. */
+  dueDay?: string;
   companyId?: string; // Optional - link to a company/service provider
   companyName?: string; // Manual entry if not linking to a company
   // Link to assets
@@ -294,6 +296,10 @@ export interface Subscription {
   linkedAssetId?: string; // ID of linked appliance or vehicle
   linkedAssetName?: string; // Name for home features or display purposes
   notes?: string;
+  /** Last logical update timestamp (seconds since epoch). */
+  updatedAt?: number;
+  /** Subscription schema version for cross-client migration. */
+  schemaVersion?: string;
   isArchived?: boolean; // Whether this subscription is archived
   // Metadata
   pubkey: string;
@@ -366,7 +372,12 @@ export const COMPANY_KIND = 37003;
 export const COMPANY_WORK_LOG_KIND = 37005;
 export const MAINTENANCE_KIND = 30229;
 export const MAINTENANCE_COMPLETION_KIND = 9413;
-export const SUBSCRIPTION_KIND = 37004;
+/** Canonical subscription kind for FiatLife/Amber-compatible replaceable writes. */
+export const SUBSCRIPTION_KIND = 30078;
+/** Legacy subscription kind still read during migration. */
+export const SUBSCRIPTION_KIND_LEGACY = 37004;
+/** Supported subscription kinds for read path during migration window. */
+export const SUBSCRIPTION_KINDS_READ = [SUBSCRIPTION_KIND_LEGACY, SUBSCRIPTION_KIND] as const;
 export const WARRANTY_KIND = 35043;
 export const PET_KIND = 38033;
 export const PROJECT_KIND = 35389;

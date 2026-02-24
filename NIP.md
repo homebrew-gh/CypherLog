@@ -421,24 +421,34 @@ Legacy events with plaintext tags (`completed_date`, `notes`, `part`, etc.) are 
 
 ---
 
-## Kind 37004: Subscription
+## Kind 30078: Subscription
 
-An addressable event representing a recurring subscription or service.
+An addressable/replaceable event representing a recurring subscription or service.
+
+Legacy kind `37004` remains read-compatible during migration. New creates/edits use kind `30078`.
 
 ### Format
 
 ```json
 {
-  "kind": 37004,
+  "kind": 30078,
   "content": "",
   "tags": [
-    ["d", "<unique-identifier>"],
+    ["d", "subscription:<unique-identifier>"],
+    ["id", "<unique-identifier>"],
     ["alt", "Subscription: <name>"],
     ["name", "<subscription name/description>"],
     ["subscription_type", "<type>"],
     ["cost", "<cost>"],
+    ["amount", "<cost alias>"],
     ["currency", "<currency code>"],
     ["billing_frequency", "<frequency>"],
+    ["recurrence", "<frequency alias>"],
+    ["start_date", "<MM/DD/YYYY>"],
+    ["initial_purchase_date", "<MM/DD/YYYY>"],
+    ["due_day", "<1-31>"],
+    ["updated_at", "<unix-seconds>"],
+    ["schema_version", "2"],
     ["company_id", "<company-d-tag>"],
     ["company_name", "<manual company name>"],
     ["linked_asset_type", "<appliance|vehicle|home_feature>"],
@@ -453,13 +463,21 @@ An addressable event representing a recurring subscription or service.
 
 | Tag | Required | Description |
 |-----|----------|-------------|
-| `d` | Yes | Unique identifier (UUID) for the subscription |
+| `d` | Yes | Namespaced stable identifier: `subscription:<id>` |
+| `id` | Yes | Raw unique identifier (UUID) for the subscription |
 | `alt` | Yes | Human-readable description (NIP-31) |
 | `name` | Yes | Name or description of the subscription |
 | `subscription_type` | Yes | Type of subscription (see Subscription Types below) |
 | `cost` | Yes | Cost/price of the subscription (e.g., "15.99") |
+| `amount` | Yes | Alias of `cost` for interoperability |
 | `currency` | No | Currency code (e.g., "USD", "EUR", "BTC"). Defaults to user's entry currency. |
 | `billing_frequency` | Yes | How often the subscription is billed (see Billing Frequencies below) |
+| `recurrence` | Yes | Alias of `billing_frequency` |
+| `start_date` | No | Subscription start date in MM/DD/YYYY format |
+| `initial_purchase_date` | No | Alias of `start_date` |
+| `due_day` | No | Day-of-month due anchor (derived from start date when available) |
+| `updated_at` | Yes | Last logical update timestamp (unix seconds) |
+| `schema_version` | Yes | Payload schema version |
 | `company_id` | No | Reference to a Company/Service Provider (d-tag from kind 37003). Mutually exclusive with `company_name`. |
 | `company_name` | No | Manual company name entry. Mutually exclusive with `company_id`. |
 | `linked_asset_type` | No | Type of linked asset: `appliance`, `vehicle`, or `home_feature` |
@@ -520,6 +538,19 @@ The linked asset is defined by three optional tags:
 3. **`linked_asset_name`**: The name of the asset for display purposes
 
 For appliances and vehicles, `linked_asset_id` is required. For home features, only `linked_asset_name` is used (since home features are not separate Nostr events).
+
+### Round-trip preservation
+
+- Unknown tags on existing subscription events are preserved on CypherLog edits.
+- Unknown payload keys are preserved when prior payload is readable (plain or decryptable).
+- If encrypted payload cannot be decrypted on update, CypherLog preserves tags and writes managed fields safely, but unknown encrypted payload keys may not round-trip.
+
+### Migration behavior
+
+- **Dual read:** Clients should read both `37004` and `30078` during migration.
+- **Canonical write:** New creates/edits publish `30078`.
+- **Deterministic merge:** For duplicate logical subscription ids, prefer `30078`, then latest `updated_at`/`created_at`.
+- **Deletion:** CypherLog emits kind-5 tombstones referencing both legacy and new addresses plus sibling `e` tags where available.
 
 ### Security Warning
 

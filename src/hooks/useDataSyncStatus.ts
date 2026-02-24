@@ -11,6 +11,7 @@ import {
   COMPANY_KIND, 
   COMPANY_WORK_LOG_KIND,
   SUBSCRIPTION_KIND,
+  SUBSCRIPTION_KIND_LEGACY,
   WARRANTY_KIND,
   MAINTENANCE_COMPLETION_KIND,
   PET_KIND,
@@ -32,6 +33,19 @@ const BUNKER_NEW_USER_TIMEOUT_MS = 15000;
 const BUNKER_SYNC_TIMEOUT_MS = 30000;
 // If NostrSync hasn't set relay list for this user after this long, run sync anyway (use current config)
 const RELAY_LIST_WAIT_TIMEOUT_MS = 4000;
+
+function isSubscriptionRecordEvent(event: { kind: number; tags: string[][] }): boolean {
+  if (event.kind === SUBSCRIPTION_KIND_LEGACY) return true;
+  if (event.kind !== SUBSCRIPTION_KIND) return false;
+  const dTag = event.tags.find(([name]) => name === 'd')?.[1] ?? '';
+  if (dTag.startsWith('subscription:')) return true;
+  const hasName = event.tags.some(([name, value]) => name === 'name' && !!value);
+  const hasAmount = event.tags.some(([name, value]) => (name === 'cost' || name === 'amount') && !!value);
+  const hasRecurrence = event.tags.some(
+    ([name, value]) => (name === 'billing_frequency' || name === 'recurrence') && !!value
+  );
+  return hasName && hasAmount && hasRecurrence;
+}
 
 // Cache result type for reuse
 interface CacheCheckResult {
@@ -117,7 +131,7 @@ export function useDataSyncStatus() {
         getCachedEvents([MAINTENANCE_KIND], user.pubkey),
         getCachedEvents([COMPANY_KIND], user.pubkey),
         getCachedEvents([COMPANY_WORK_LOG_KIND], user.pubkey),
-        getCachedEvents([SUBSCRIPTION_KIND], user.pubkey),
+        getCachedEvents([SUBSCRIPTION_KIND, SUBSCRIPTION_KIND_LEGACY], user.pubkey),
         getCachedEvents([WARRANTY_KIND], user.pubkey),
         getCachedEvents([MAINTENANCE_COMPLETION_KIND], user.pubkey),
         getCachedEvents([PET_KIND], user.pubkey),
@@ -136,7 +150,7 @@ export function useDataSyncStatus() {
         maintenance: cachedMaintenance.length,
         companies: cachedCompanies.length,
         companyWorkLogs: cachedCompanyWorkLogs.length,
-        subscriptions: cachedSubscriptions.length,
+        subscriptions: cachedSubscriptions.filter(isSubscriptionRecordEvent).length,
         warranties: cachedWarranties.length,
         completions: cachedCompletions.length,
         pets: cachedPets.length,
@@ -152,7 +166,7 @@ export function useDataSyncStatus() {
           cachedMaintenance.length > 0 ||
           cachedCompanies.length > 0 ||
           cachedCompanyWorkLogs.length > 0 ||
-          cachedSubscriptions.length > 0 ||
+          cachedSubscriptions.some(isSubscriptionRecordEvent) ||
           cachedWarranties.length > 0 ||
           cachedCompletions.length > 0 ||
           cachedPets.length > 0 ||
@@ -224,7 +238,7 @@ export function useDataSyncStatus() {
             { kinds: [VEHICLE_KIND], authors: [user.pubkey] },
             { kinds: [MAINTENANCE_KIND], authors: [user.pubkey] },
             { kinds: [COMPANY_KIND], authors: [user.pubkey] },
-            { kinds: [SUBSCRIPTION_KIND], authors: [user.pubkey] },
+            { kinds: [SUBSCRIPTION_KIND, SUBSCRIPTION_KIND_LEGACY], authors: [user.pubkey] },
             { kinds: [WARRANTY_KIND], authors: [user.pubkey] },
             { kinds: [MAINTENANCE_COMPLETION_KIND], authors: [user.pubkey] },
             { kinds: [PET_KIND], authors: [user.pubkey] },
@@ -278,7 +292,7 @@ export function useDataSyncStatus() {
         const maintenanceCount = events.filter(e => e.kind === MAINTENANCE_KIND).length;
         const companyCount = events.filter(e => e.kind === COMPANY_KIND).length;
         const companyWorkLogCount = events.filter(e => e.kind === COMPANY_WORK_LOG_KIND).length;
-        const subscriptionCount = events.filter(e => e.kind === SUBSCRIPTION_KIND).length;
+        const subscriptionCount = events.filter(isSubscriptionRecordEvent).length;
         const warrantyCount = events.filter(e => e.kind === WARRANTY_KIND).length;
         const completionCount = events.filter(e => e.kind === MAINTENANCE_COMPLETION_KIND).length;
         const petCount = events.filter(e => e.kind === PET_KIND).length;

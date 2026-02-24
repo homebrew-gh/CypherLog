@@ -41,7 +41,7 @@ export const PRIVATE_DATA_KINDS = [
   VET_VISIT_KIND,
 ] as const;
 
-const SET = new Set(PRIVATE_DATA_KINDS);
+const SET = new Set<number>(PRIVATE_DATA_KINDS);
 
 export function isPrivateDataKind(kind: number): boolean {
   return SET.has(kind);

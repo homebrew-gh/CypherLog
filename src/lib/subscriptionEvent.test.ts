@@ -1,17 +1,34 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildSubscriptionPayload,
   buildSubscriptionTags,
+  deriveDueDay,
   normalizeCostForTag,
   normalizeBillingFrequency,
+  parseSubscriptionIdFromDTag,
   BILLING_FREQUENCY_VALUES,
+  SUBSCRIPTION_SCHEMA_VERSION,
+  toSubscriptionDTag,
 } from './subscriptionEvent';
 import { SUBSCRIPTION_KIND } from './types';
 
 describe('subscriptionEvent', () => {
-  const requiredTagNames = ['d', 'alt', 'name', 'subscription_type', 'cost', 'billing_frequency'];
+  const requiredTagNames = [
+    'd',
+    'id',
+    'alt',
+    'name',
+    'subscription_type',
+    'cost',
+    'amount',
+    'billing_frequency',
+    'recurrence',
+    'updated_at',
+    'schema_version',
+  ];
 
   describe('buildSubscriptionTags', () => {
-    it('includes all required canonical tags', () => {
+    it('includes all required canonical tags for kind 30078 schema', () => {
       const tags = buildSubscriptionTags({
         id: 'sub-123',
         data: {
@@ -26,6 +43,8 @@ describe('subscriptionEvent', () => {
       for (const req of requiredTagNames) {
         expect(names).toContain(req);
       }
+      expect(tags.find(([n]) => n === 'd')?.[1]).toBe('subscription:sub-123');
+      expect(tags.find(([n]) => n === 'id')?.[1]).toBe('sub-123');
     });
 
     it('uses human-readable alt (Subscription: name) not generic encrypted text', () => {
@@ -56,7 +75,9 @@ describe('subscriptionEvent', () => {
         existingEvent: null,
       });
       const costTag = tags.find(([n]) => n === 'cost')?.[1];
+      const amountTag = tags.find(([n]) => n === 'amount')?.[1];
       expect(costTag).toBe('19.99');
+      expect(amountTag).toBe('19.99');
     });
 
     it('emits valid billing_frequency', () => {
@@ -84,7 +105,7 @@ describe('subscriptionEvent', () => {
         content: '',
         sig: '',
         tags: [
-          ['d', 'sub-1'],
+          ['d', 'subscription:sub-1'],
           ['name', 'Old'],
           ['custom', 'value'],
           ['x-nostr', 'custom-data'],
@@ -126,6 +147,42 @@ describe('subscriptionEvent', () => {
       expect(tags.find(([n]) => n === 'company_name')?.[1]).toBe('FitCo');
       expect(tags.find(([n]) => n === 'notes')?.[1]).toBe('Annual discount applied');
       expect(tags.find(([n]) => n === 'start_date')?.[1]).toBe('01/15/2024');
+      expect(tags.find(([n]) => n === 'initial_purchase_date')?.[1]).toBe('01/15/2024');
+      expect(tags.find(([n]) => n === 'due_day')?.[1]).toBe('15');
+      expect(tags.find(([n]) => n === 'schema_version')?.[1]).toBe(SUBSCRIPTION_SCHEMA_VERSION);
+    });
+  });
+
+  describe('buildSubscriptionPayload', () => {
+    it('preserves unknown root and cypherlog fields on update', () => {
+      const payload = buildSubscriptionPayload({
+        data: {
+          id: 'sub-1',
+          name: 'Updated',
+          subscriptionType: 'Software',
+          cost: '12.99',
+          billingFrequency: 'monthly',
+          startDate: '03/14/2024',
+          updatedAt: 1700000000,
+          schemaVersion: SUBSCRIPTION_SCHEMA_VERSION,
+          companyId: 'comp-1',
+          linkedAssetType: 'vehicle',
+          linkedAssetId: 'veh-1',
+        },
+        existingPayload: {
+          externalProviderId: 'fl-123',
+          dueTimezone: 'UTC',
+          cypherlog: {
+            customInternalFlag: true,
+          },
+        },
+      });
+
+      expect(payload.externalProviderId).toBe('fl-123');
+      expect(payload.dueTimezone).toBe('UTC');
+      expect((payload.cypherlog as Record<string, unknown>).customInternalFlag).toBe(true);
+      expect((payload.cypherlog as Record<string, unknown>).companyId).toBe('comp-1');
+      expect(payload.dueDay).toBe('14');
     });
   });
 
@@ -147,7 +204,20 @@ describe('subscriptionEvent', () => {
     });
   });
 
-  describe('example kind 37004 event payload', () => {
+  describe('helpers', () => {
+    it('builds and parses namespaced d-tags', () => {
+      expect(toSubscriptionDTag('abc')).toBe('subscription:abc');
+      expect(parseSubscriptionIdFromDTag('subscription:abc')).toBe('abc');
+      expect(parseSubscriptionIdFromDTag('legacy-uuid')).toBe('legacy-uuid');
+    });
+
+    it('derives due day from start date', () => {
+      expect(deriveDueDay('01/15/2024')).toBe('15');
+      expect(deriveDueDay('bad-value')).toBeUndefined();
+    });
+  });
+
+  describe('example kind 30078 event payload', () => {
     it('produces tags that match interop requirements and can be used in an example event', () => {
       const id = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
       const tags = buildSubscriptionTags({
@@ -184,9 +254,9 @@ describe('subscriptionEvent', () => {
         id: '<event-id>',
         sig: '<signature>',
       };
-      expect(exampleEvent.kind).toBe(37004);
+      expect(exampleEvent.kind).toBe(30078);
       const dTag = exampleEvent.tags.find(([t]) => t === 'd')?.[1];
-      expect(dTag).toBe(id);
+      expect(dTag).toBe(`subscription:${id}`);
       const altTag = exampleEvent.tags.find(([t]) => t === 'alt')?.[1];
       expect(altTag).toBe('Subscription: Netflix');
       const costTag = exampleEvent.tags.find(([t]) => t === 'cost')?.[1];
@@ -195,7 +265,7 @@ describe('subscriptionEvent', () => {
       expect(freqTag).toBe('monthly');
     });
 
-    it('example generated 37004 event JSON (FiatLife-interop shape)', () => {
+    it('example generated 30078 event JSON (FiatLife-interop shape)', () => {
       const tags = buildSubscriptionTags({
         id: 'sub-uuid-here',
         data: {
@@ -208,10 +278,17 @@ describe('subscriptionEvent', () => {
         existingEvent: null,
       });
       const exampleEventJson = {
-        kind: 37004,
+        kind: 30078,
         pubkey: '00'.repeat(32),
         created_at: 1700000000,
-        content: '',
+        content: JSON.stringify({
+          id: 'sub-uuid-here',
+          name: 'Netflix',
+          amount: '15.99',
+          recurrence: 'monthly',
+          schemaVersion: SUBSCRIPTION_SCHEMA_VERSION,
+          updatedAt: 1700000000,
+        }),
         tags: [
           ...tags,
           ['client', 'Cypher Log', 'https://cypherlog.io'],
@@ -221,7 +298,8 @@ describe('subscriptionEvent', () => {
       };
       // Required for FiatLife: d, alt, name, subscription_type, cost, billing_frequency
       const tagMap = Object.fromEntries(exampleEventJson.tags.map((t) => [t[0], t[1]]));
-      expect(tagMap.d).toBe('sub-uuid-here');
+      expect(tagMap.d).toBe('subscription:sub-uuid-here');
+      expect(tagMap.id).toBe('sub-uuid-here');
       expect(tagMap.alt).toBe('Subscription: Netflix');
       expect(tagMap.name).toBe('Netflix');
       expect(tagMap.subscription_type).toBe('Streaming');

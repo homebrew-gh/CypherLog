@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, X, AlertTriangle, Building, Package, Car, TreePine, Link2 } from 'lucide-react';
+import { Plus, X, AlertTriangle, Building, Package, Car, TreePine, Link2, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +17,7 @@ import { useVehicles } from '@/hooks/useVehicles';
 import { useCustomHomeFeatures } from '@/hooks/useCustomHomeFeatures';
 import { useCurrency } from '@/hooks/useCurrency';
 import { toast } from '@/hooks/useToast';
+import { DateInput } from '@/components/ui/date-input';
 import { BILLING_FREQUENCIES, type Subscription, type BillingFrequency, type LinkedAssetType } from '@/lib/types';
 import { getGroupedCurrencies, getCurrency } from '@/lib/currency';
 
@@ -55,6 +56,7 @@ export function SubscriptionDialog({ isOpen, onClose, subscription }: Subscripti
     linkedAssetId: '',
     linkedAssetName: '',
     notes: '',
+    startDate: '',
   });
 
   const groupedCurrencies = getGroupedCurrencies();
@@ -76,6 +78,7 @@ export function SubscriptionDialog({ isOpen, onClose, subscription }: Subscripti
           linkedAssetId: subscription.linkedAssetId || '',
           linkedAssetName: subscription.linkedAssetName || '',
           notes: subscription.notes || '',
+          startDate: subscription.startDate || '',
         });
       } else {
         setFormData({
@@ -90,6 +93,7 @@ export function SubscriptionDialog({ isOpen, onClose, subscription }: Subscripti
           linkedAssetId: '',
           linkedAssetName: '',
           notes: '',
+          startDate: '',
         });
       }
       setShowAddType(false);
@@ -309,6 +313,7 @@ export function SubscriptionDialog({ isOpen, onClose, subscription }: Subscripti
         linkedAssetId: formData.linkedAssetId || undefined,
         linkedAssetName: formData.linkedAssetName || undefined,
         notes: formData.notes.trim() || undefined,
+        startDate: formData.startDate?.trim() || undefined,
       };
 
       if (isEditing && subscription) {
@@ -460,6 +465,21 @@ export function SubscriptionDialog({ isOpen, onClose, subscription }: Subscripti
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Subscription start date (initial purchase) */}
+          <div className="space-y-2">
+            <Label htmlFor="startDate" className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              Subscription start date
+            </Label>
+            <DateInput
+              id="startDate"
+              value={formData.startDate}
+              onChange={(value) => setFormData(prev => ({ ...prev, startDate: value }))}
+              placeholder="MM/DD/YYYY"
+            />
+            <p className="text-xs text-muted-foreground">When the subscription began (initial purchase date). Optional.</p>
           </div>
 
           {/* Company/Service Provider */}

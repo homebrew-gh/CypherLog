@@ -51,6 +51,7 @@ function parseSubscriptionPlaintext(event: NostrEvent): Subscription | null {
     linkedAssetId: getTagValue(event, 'linked_asset_id'),
     linkedAssetName: getTagValue(event, 'linked_asset_name'),
     notes: getTagValue(event, 'notes'),
+    startDate: getTagValue(event, 'start_date'),
     isArchived: getTagValue(event, 'is_archived') === 'true',
     pubkey: event.pubkey,
     createdAt: event.created_at,

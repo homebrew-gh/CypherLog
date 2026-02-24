@@ -4,19 +4,7 @@
  * emitted so other clients can render subscription cards without decrypting content.
  *
  * Example generated event (tags; id/sig/content set by signer/relay):
- * {
- *   "kind": 37004,
- *   "pubkey": "<pubkey>",
- *   "created_at": 1700000000,
- *   "content": "",
- *   "tags": [
- *     ["d", "sub-uuid"], ["alt", "Subscription: Netflix"], ["name", "Netflix"],
- *     ["subscription_type", "Streaming"], ["cost", "15.99"], ["billing_frequency", "monthly"],
- *     ["currency", "USD"], ["client", "Cypher Log", "https://cypherlog.io"]
- *   ],
- *   "id": "<event-id>",
- *   "sig": "<signature>"
- * }
+ * See docs/KIND_37004_SUBSCRIPTION_FIATLIFE.md for full structure for FiatLife interop.
  */
 
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -49,6 +37,7 @@ const KNOWN_TAG_NAMES = new Set([
   'linked_asset_id',
   'linked_asset_name',
   'notes',
+  'start_date',
   'is_archived',
   'a',
   'client',
@@ -66,6 +55,8 @@ export type SubscriptionTagData = {
   linkedAssetId?: string;
   linkedAssetName?: string;
   notes?: string;
+  /** When the subscription began. MM/DD/YYYY. */
+  startDate?: string;
   isArchived?: boolean;
 };
 
@@ -120,6 +111,7 @@ export function buildSubscriptionTags(params: {
   if (data.linkedAssetId?.trim()) tags.push(['linked_asset_id', data.linkedAssetId.trim()]);
   if (data.linkedAssetName?.trim()) tags.push(['linked_asset_name', data.linkedAssetName.trim()]);
   if (data.notes?.trim()) tags.push(['notes', data.notes.trim()]);
+  if (data.startDate?.trim()) tags.push(['start_date', data.startDate.trim()]);
   if (data.isArchived === true) tags.push(['is_archived', 'true']);
 
   if (existingEvent?.tags?.length) {

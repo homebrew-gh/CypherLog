@@ -1,8 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
+import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import { useNostrLogin } from '@nostrify/react/login';
 import { useCurrentUser } from './useCurrentUser';
 import { useAppContext } from './useAppContext';
+import { useUserPreferences } from '@/contexts/UserPreferencesContext';
+import { isRelayUrlSecure } from '@/lib/relay';
 import { useEffect, useState, useRef } from 'react';
 import { 
   APPLIANCE_KIND, 
@@ -33,6 +36,55 @@ const BUNKER_NEW_USER_TIMEOUT_MS = 15000;
 const BUNKER_SYNC_TIMEOUT_MS = 30000;
 // If NostrSync hasn't set relay list for this user after this long, run sync anyway (use current config)
 const RELAY_LIST_WAIT_TIMEOUT_MS = 4000;
+
+/**
+ * NPool.query waits for EOSE from every relay in the route before returning.
+ * Splitting private vs public groups lets a responsive private relay finish without
+ * being blocked by slow public relays (and vice versa).
+ */
+function getReadRelayGroups(
+  relays: { url: string; read: boolean }[],
+  privateRelayUrls: string[],
+): { privateReadUrls: string[]; publicReadUrls: string[] } {
+  const privateSet = new Set(privateRelayUrls.filter(isRelayUrlSecure));
+  const privateReadUrls: string[] = [];
+  const publicReadUrls: string[] = [];
+  for (const r of relays) {
+    if (!r.read) continue;
+    if (privateSet.has(r.url)) privateReadUrls.push(r.url);
+    else publicReadUrls.push(r.url);
+  }
+  return { privateReadUrls, publicReadUrls };
+}
+
+type NostrQueryable = {
+  query(
+    filters: NostrFilter[],
+    opts?: { signal?: AbortSignal; relays?: string[] },
+  ): Promise<NostrEvent[]>;
+};
+
+async function queryAcrossRelayGroups(
+  nostr: NostrQueryable,
+  filters: NostrFilter[],
+  signal: AbortSignal,
+  privateReadUrls: string[],
+  publicReadUrls: string[],
+): Promise<NostrEvent[]> {
+  const run = async (urls: string[]): Promise<NostrEvent[]> => {
+    if (urls.length === 0) return [];
+    try {
+      return await nostr.query(filters, { signal, relays: urls });
+    } catch {
+      return [];
+    }
+  };
+  const [fromPrivate, fromPublic] = await Promise.all([
+    run(privateReadUrls),
+    run(publicReadUrls),
+  ]);
+  return dedupeEventsByLogicalKey([...fromPrivate, ...fromPublic]);
+}
 
 function isSubscriptionRecordEvent(event: { kind: number; tags: string[][] }): boolean {
   if (event.kind === SUBSCRIPTION_KIND_LEGACY) return true;
@@ -82,7 +134,10 @@ export function useDataSyncStatus() {
   const { logins } = useNostrLogin();
   const { user } = useCurrentUser();
   const { config } = useAppContext();
+  const { preferences } = useUserPreferences();
   const queryClient = useQueryClient();
+  const privateRelayUrls = (preferences.privateRelays ?? []).filter(isRelayUrlSecure);
+  const privateRelaysKey = [...privateRelayUrls].sort().join('|');
   const loginType = logins[0]?.type;
   /** Bunker (NIP-46) and Amber (NIP-55 intents) need longer sync timeouts than local signers. */
   const isSlowSignerPath = loginType === 'bunker' || loginType === 'x-amber-android';
@@ -192,7 +247,14 @@ export function useDataSyncStatus() {
   // Main sync query - fetches all data types in one efficient request
   // Only runs after user's relay list (NIP-65) has been loaded, or after timeout fallback
   const { data: syncStatus, isLoading: isSyncing } = useQuery({
-    queryKey: ['data-sync-status', user?.pubkey, config.relayMetadata.updatedAt, isSlowSignerPath, canRunSync],
+    queryKey: [
+      'data-sync-status',
+      user?.pubkey,
+      config.relayMetadata.updatedAt,
+      privateRelaysKey,
+      isSlowSignerPath,
+      canRunSync,
+    ],
     queryFn: async ({ signal }) => {
       if (!user?.pubkey) {
         return { 
@@ -232,28 +294,38 @@ export function useDataSyncStatus() {
 
       try {
         logger.log('[DataSync] Starting relay query, timeout:', timeoutMs, 'ms');
-        
-        // Fetch all data types in one query for efficiency
-        const events = await nostr.query(
-          [
-            { kinds: [APPLIANCE_KIND], authors: [user.pubkey] },
-            { kinds: [VEHICLE_KIND], authors: [user.pubkey] },
-            { kinds: [MAINTENANCE_KIND], authors: [user.pubkey] },
-            { kinds: [COMPANY_KIND], authors: [user.pubkey] },
-            { kinds: [SUBSCRIPTION_KIND, SUBSCRIPTION_KIND_LEGACY], authors: [user.pubkey] },
-            { kinds: [WARRANTY_KIND], authors: [user.pubkey] },
-            { kinds: [MAINTENANCE_COMPLETION_KIND], authors: [user.pubkey] },
-            { kinds: [PET_KIND], authors: [user.pubkey] },
-            { kinds: [PROJECT_KIND], authors: [user.pubkey] },
-            { kinds: [PROJECT_ENTRY_KIND], authors: [user.pubkey] },
-            { kinds: [PROJECT_TASK_KIND], authors: [user.pubkey] },
-            { kinds: [PROJECT_MATERIAL_KIND], authors: [user.pubkey] },
-            { kinds: [PROJECT_RESEARCH_KIND], authors: [user.pubkey] },
-            { kinds: [PROPERTY_KIND], authors: [user.pubkey] },
-            { kinds: [VET_VISIT_KIND], authors: [user.pubkey] },
-            { kinds: [5], authors: [user.pubkey] }, // Deletion events
-          ],
-          { signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) }
+
+        const abortQuery = AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]);
+        const { privateReadUrls, publicReadUrls } = getReadRelayGroups(
+          config.relayMetadata.relays,
+          privateRelayUrls,
+        );
+
+        const filters: NostrFilter[] = [
+          { kinds: [APPLIANCE_KIND], authors: [user.pubkey] },
+          { kinds: [VEHICLE_KIND], authors: [user.pubkey] },
+          { kinds: [MAINTENANCE_KIND], authors: [user.pubkey] },
+          { kinds: [COMPANY_KIND], authors: [user.pubkey] },
+          { kinds: [SUBSCRIPTION_KIND, SUBSCRIPTION_KIND_LEGACY], authors: [user.pubkey] },
+          { kinds: [WARRANTY_KIND], authors: [user.pubkey] },
+          { kinds: [MAINTENANCE_COMPLETION_KIND], authors: [user.pubkey] },
+          { kinds: [PET_KIND], authors: [user.pubkey] },
+          { kinds: [PROJECT_KIND], authors: [user.pubkey] },
+          { kinds: [PROJECT_ENTRY_KIND], authors: [user.pubkey] },
+          { kinds: [PROJECT_TASK_KIND], authors: [user.pubkey] },
+          { kinds: [PROJECT_MATERIAL_KIND], authors: [user.pubkey] },
+          { kinds: [PROJECT_RESEARCH_KIND], authors: [user.pubkey] },
+          { kinds: [PROPERTY_KIND], authors: [user.pubkey] },
+          { kinds: [VET_VISIT_KIND], authors: [user.pubkey] },
+          { kinds: [5], authors: [user.pubkey] },
+        ];
+
+        const events = await queryAcrossRelayGroups(
+          nostr,
+          filters,
+          abortQuery,
+          privateReadUrls,
+          publicReadUrls,
         );
 
         logger.log('[DataSync] Query complete, events synced:', events.length > 0);

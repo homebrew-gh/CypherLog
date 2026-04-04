@@ -53,7 +53,7 @@ export function CachingRelayManager() {
   const { toast } = useToast();
   const { cachingRelay, setCachingRelay, isPrivateRelay } = useEncryptionSettings();
 
-  const [newRelayUrl, setNewRelayUrl] = useState('');
+  const [newRelayUrl, setNewRelayUrl] = useState('wss://');
   const [relayStatus, setRelayStatus] = useState<RelayStatus>('unknown');
   const [isChecking, setIsChecking] = useState(false);
   const [readEnabled, setReadEnabled] = useState(true);
@@ -149,7 +149,7 @@ export function CachingRelayManager() {
 
     // Set as caching relay
     setCachingRelay(normalized);
-    setNewRelayUrl('');
+    setNewRelayUrl('wss://');
     
     toast({
       title: 'Caching relay set',
@@ -400,9 +400,11 @@ export function CachingRelayManager() {
           </Label>
           <Input
             id="new-caching-relay-url"
-            placeholder="wss://relay.primal.net"
+            placeholder="relay.primal.net"
             value={newRelayUrl}
-            onChange={(e) => setNewRelayUrl(e.target.value)}
+            onChange={(e) =>
+              setNewRelayUrl(e.target.value.replace(/^wss:\/\/wss:\/\//i, 'wss://'))
+            }
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 handleAddCachingRelay();
@@ -412,7 +414,7 @@ export function CachingRelayManager() {
         </div>
         <Button
           onClick={handleAddCachingRelay}
-          disabled={!newRelayUrl.trim()}
+          disabled={!isValidRelayUrl(newRelayUrl)}
           variant="outline"
           size="sm"
           className="h-10 shrink-0"

@@ -72,7 +72,7 @@ export function RelayListManager() {
   const { isPrivateRelay, setPrivateRelay, isCachingRelay } = useEncryptionSettings();
 
   const [relays, setRelays] = useState<Relay[]>(config.relayMetadata.relays);
-  const [newRelayUrl, setNewRelayUrl] = useState('');
+  const [newRelayUrl, setNewRelayUrl] = useState('wss://');
   const [relayStatuses, setRelayStatuses] = useState<Record<string, RelayStatus>>({});
   const [isCheckingAll, setIsCheckingAll] = useState(false);
   const [relayToRemove, setRelayToRemove] = useState<string | null>(null);
@@ -183,7 +183,7 @@ export function RelayListManager() {
 
     const newRelays = [...relays, { url: normalized, read: true, write: true }];
     setRelays(newRelays);
-    setNewRelayUrl('');
+    setNewRelayUrl('wss://');
 
     saveRelays(newRelays);
   };
@@ -479,9 +479,11 @@ export function RelayListManager() {
           </Label>
           <Input
             id="new-relay-url"
-            placeholder="Enter relay URL (e.g., wss://relay.example.com)"
+            placeholder="relay.example.com"
             value={newRelayUrl}
-            onChange={(e) => setNewRelayUrl(e.target.value)}
+            onChange={(e) =>
+              setNewRelayUrl(e.target.value.replace(/^wss:\/\/wss:\/\//i, 'wss://'))
+            }
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 handleAddRelay();
@@ -491,7 +493,7 @@ export function RelayListManager() {
         </div>
         <Button
           onClick={handleAddRelay}
-          disabled={!newRelayUrl.trim()}
+          disabled={!isValidRelayUrl(newRelayUrl)}
           variant="outline"
           size="sm"
           className="h-10 shrink-0"

@@ -9,6 +9,7 @@ import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { isPrivateDataKind } from '@/lib/privateRelayKinds';
 import { logger } from '@/lib/logger';
 import { PublishOutboxManager } from '@/components/PublishOutboxManager';
+import { DEFAULT_PUBLIC_READ_RELAY_URLS } from '@/lib/defaultAppRelays';
 
 /** Setter for private relay URLs; synced from UserPreferencesProvider when preferences load */
 export const SetPrivateRelayUrlsContext = createContext<((urls: string[]) => void) | null>(null);
@@ -125,10 +126,11 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
         if (includePrivateForReads) {
           for (const url of privateReadRelays) routes.set(url, filters);
         }
-        let orderedPublic = [...publicReadRelays];
+        let orderedPublic =
+          publicReadRelays.length > 0 ? [...publicReadRelays] : [...DEFAULT_PUBLIC_READ_RELAY_URLS];
         const currentCachingRelay = cachingRelayRef.current;
-        if (currentCachingRelay && publicReadRelays.includes(currentCachingRelay)) {
-          orderedPublic = [currentCachingRelay, ...publicReadRelays.filter((url) => url !== currentCachingRelay)];
+        if (currentCachingRelay && orderedPublic.includes(currentCachingRelay)) {
+          orderedPublic = [currentCachingRelay, ...orderedPublic.filter((url) => url !== currentCachingRelay)];
         }
         for (const url of orderedPublic) {
           routes.set(url, filters);
@@ -150,12 +152,14 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
   // Invalidate Nostr queries when merged relay list changes
   useEffect(() => {
     queryClient.invalidateQueries({ queryKey: ['nostr'] });
+    queryClient.invalidateQueries({ queryKey: ['author'] });
   }, [mergedRelays, queryClient]);
 
   // Update caching relay ref when it changes
   useEffect(() => {
     cachingRelayRef.current = cachingRelay;
     queryClient.invalidateQueries({ queryKey: ['nostr'] });
+    queryClient.invalidateQueries({ queryKey: ['author'] });
   }, [cachingRelay, queryClient]);
 
   // Create pool on mount when visible; when tab is hidden, close and set null; when visible again, create new pool.
@@ -176,6 +180,7 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
           if (!prev) {
             logger.log('[NostrProvider] Page visible, reconnecting relays');
             queryClient.invalidateQueries({ queryKey: ['nostr'] });
+            queryClient.invalidateQueries({ queryKey: ['author'] });
             return createPool();
           }
           return prev;
@@ -187,6 +192,7 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
       setPoolInstance((prev) => {
         if (prev) return prev;
         queryClient.invalidateQueries({ queryKey: ['nostr'] });
+        queryClient.invalidateQueries({ queryKey: ['author'] });
         return createPool();
       });
     }

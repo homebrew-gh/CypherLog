@@ -18,6 +18,7 @@ import { NWCProvider } from '@/contexts/NWCContext';
 import { UserPreferencesProvider } from '@/contexts/UserPreferencesContext';
 import { EncryptionProvider } from '@/contexts/EncryptionContext';
 import { AppConfig } from '@/contexts/AppContext';
+import { DEFAULT_RELAY_METADATA_ENTRIES } from '@/lib/defaultAppRelays';
 import AppRouter from './AppRouter';
 
 const head = createHead({
@@ -41,11 +42,7 @@ const queryClient = new QueryClient({
 const defaultConfig: AppConfig = {
   theme: "dark",
   relayMetadata: {
-    relays: [
-      { url: 'wss://relay.ditto.pub', read: true, write: true },
-      { url: 'wss://relay.nostr.band', read: true, write: true },
-      { url: 'wss://relay.damus.io', read: true, write: true },
-    ],
+    relays: DEFAULT_RELAY_METADATA_ENTRIES,
     updatedAt: 0,
   },
 };

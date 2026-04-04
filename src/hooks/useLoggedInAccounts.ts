@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { NSchema as n, NostrEvent, NostrMetadata } from '@nostrify/nostrify';
 import { getCachedEvents, cacheEvents } from '@/lib/eventCache';
 import { logger } from '@/lib/logger';
+import { pickLatestKind0ForPubkey } from '@/lib/nostrProfile';
 
 export interface Account {
   id: string;
@@ -53,8 +54,8 @@ export function useLoggedInAccounts() {
       });
       
       // BACKGROUND SYNC: Fetch fresh data from relays
-      // Use a shorter timeout since we already have cached data to show
-      const timeoutMs = cachedEvents.length > 0 ? 5000 : 15000;
+      // Longer timeout on cold start (no IndexedDB profile yet), especially on mobile
+      const timeoutMs = cachedEvents.length > 0 ? 8000 : 22000;
       
       try {
         const freshEvents = await nostr.query(
@@ -73,10 +74,9 @@ export function useLoggedInAccounts() {
         
         // Merge fresh data with cached data (prefer fresh)
         return logins.map(({ id, pubkey }): Account => {
-          // Prefer fresh event, fall back to cached
-          const freshEvent = freshEvents.find((e) => e.pubkey === pubkey);
-          const cachedEvent = cachedEvents.find((e) => e.pubkey === pubkey);
-          const event = freshEvent || cachedEvent;
+          const freshEvent = pickLatestKind0ForPubkey(freshEvents, pubkey);
+          const cachedEvent = pickLatestKind0ForPubkey(cachedEvents, pubkey);
+          const event = freshEvent ?? cachedEvent;
           return { id, pubkey, metadata: parseMetadata(event), event };
         });
       } catch (error) {

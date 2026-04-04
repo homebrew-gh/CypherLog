@@ -3,6 +3,7 @@ import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
 import { getCachedEvents, cacheEvents } from '@/lib/eventCache';
+import { ensureAtLeastOneReadRelay } from '@/lib/defaultAppRelays';
 import { logger } from '@/lib/logger';
 
 /**
@@ -57,10 +58,11 @@ export function NostrSync() {
 
             if (cachedRelays.length > 0) {
               logger.log('[NostrSync] Loading relay list from cache');
+              const relays = ensureAtLeastOneReadRelay(cachedRelays);
               updateConfig((current) => ({
                 ...current,
                 relayMetadata: {
-                  relays: cachedRelays,
+                  relays,
                   updatedAt: cachedEvent.created_at,
                 },
               }));
@@ -98,10 +100,11 @@ export function NostrSync() {
 
             if (fetchedRelays.length > 0) {
               logger.log('[NostrSync] Syncing relay list from Nostr');
+              const relays = ensureAtLeastOneReadRelay(fetchedRelays);
               updateConfig((current) => ({
                 ...current,
                 relayMetadata: {
-                  relays: fetchedRelays,
+                  relays,
                   updatedAt: event.created_at,
                 },
               }));

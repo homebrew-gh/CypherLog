@@ -127,6 +127,9 @@ export interface MaintenanceCompletion {
   mileageAtCompletion?: string; // For vehicle maintenance tracking
   notes?: string;
   parts?: MaintenancePart[]; // Parts used in this maintenance
+  /** Receipt image URL (Blossom / private media); from NIP-94 imeta or encrypted payload */
+  receiptUrl?: string;
+  receiptMime?: string;
   pubkey: string;
   createdAt: number;
 }

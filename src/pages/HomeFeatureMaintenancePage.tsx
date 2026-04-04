@@ -24,6 +24,7 @@ import { useMaintenanceCompletions } from '@/hooks/useMaintenanceCompletions';
 import { MaintenanceDialog } from '@/components/MaintenanceDialog';
 import { MaintenanceDetailDialog } from '@/components/MaintenanceDetailDialog';
 import { LogHomeMaintenanceDialog } from '@/components/LogHomeMaintenanceDialog';
+import { MaintenanceReceiptThumb } from '@/components/MaintenanceReceiptThumb';
 import type { MaintenanceSchedule } from '@/lib/types';
 import NotFound from './NotFound';
 
@@ -388,6 +389,7 @@ export function HomeFeatureMaintenancePage() {
                                 {completion.notes}
                               </p>
                             )}
+                            <MaintenanceReceiptThumb completion={completion} compact={false} />
                           </div>
                         );
                       })}

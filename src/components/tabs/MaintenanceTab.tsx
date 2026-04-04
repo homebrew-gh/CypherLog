@@ -13,6 +13,7 @@ import { MaintenanceDialog } from '@/components/MaintenanceDialog';
 import { MaintenanceDetailDialog } from '@/components/MaintenanceDetailDialog';
 import { LogMaintenanceDialog } from '@/components/LogMaintenanceDialog';
 import { LogHomeMaintenanceDialog } from '@/components/LogHomeMaintenanceDialog';
+import { MaintenanceReceiptThumb } from '@/components/MaintenanceReceiptThumb';
 import { CalendarExportDialog } from '@/components/CalendarExportDialog';
 import { useAppliances } from '@/hooks/useAppliances';
 import { useVehicles } from '@/hooks/useVehicles';
@@ -499,12 +500,15 @@ function MaintenanceItem({
           {completions.map((completion) => (
             <div
               key={completion.id}
-              className="flex items-center gap-2 p-2 rounded bg-green-50 dark:bg-green-900 text-sm"
+              className="flex flex-col gap-1 p-2 rounded bg-green-50 dark:bg-green-900 text-sm"
             >
-              <Calendar className="h-4 w-4 text-green-600 dark:text-green-400" />
-              <span className="text-green-800 dark:text-green-200">
-                Completed on {completion.completedDate}
-              </span>
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                <span className="text-green-800 dark:text-green-200">
+                  Completed on {completion.completedDate}
+                </span>
+              </div>
+              <MaintenanceReceiptThumb completion={completion} className="pl-6" />
             </div>
           ))}
         </div>
@@ -693,6 +697,9 @@ function VehicleMaintenanceItem({
                   </span>
                 </div>
               )}
+              <div className="pl-6">
+                <MaintenanceReceiptThumb completion={completion} />
+              </div>
             </div>
           ))}
         </div>
@@ -949,6 +956,7 @@ const HomeMaintenanceSection = forwardRef<HTMLDivElement, HomeMaintenanceSection
                               <span className="text-xs text-green-700 dark:text-green-300">{completion.completedDate}</span>
                             </div>
                           </div>
+                          <MaintenanceReceiptThumb completion={completion} className="mt-1" />
                         </div>
                       ))}
                     </div>
@@ -1996,6 +2004,7 @@ const VehicleMaintenanceSection = forwardRef<HTMLDivElement, VehicleMaintenanceS
                               )}
                             </div>
                           </div>
+                          <MaintenanceReceiptThumb completion={completion} className="mt-1" />
                         </div>
                       ))}
                     </div>

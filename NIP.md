@@ -388,7 +388,8 @@ A regular event recording the completion of a maintenance task.
   "tags": [
     ["a", "30229:<pubkey>:<maintenance-d-tag>", "", "maintenance"],
     ["alt", "Maintenance completed on <MM/DD/YYYY>"],
-    ["completed_date", "<MM/DD/YYYY>"]
+    ["completed_date", "<MM/DD/YYYY>"],
+    ["imeta", "url <https://...>", "m <mime>", "x <sha256>", "..."]
   ]
 }
 ```
@@ -402,6 +403,7 @@ A regular event recording the completion of a maintenance task.
 | `completed_date` | Yes | Date the maintenance was completed in MM/DD/YYYY format |
 | `mileage_at_completion` | No | Mileage at time of completion (for vehicle maintenance) |
 | `notes` | No | Notes about the completion |
+| `imeta` | No | NIP-94 file metadata for an optional receipt image (e.g., uploaded to the user's private Blossom server). Same shape as other media tags in the ecosystem (`url`, `m`, `x`, `size`, etc.). |
 
 ### Notes
 
@@ -415,7 +417,7 @@ A regular event recording the completion of a maintenance task.
 When the maintenance category has encryption enabled, sensitive completion data is stored in the `content` field as NIP-44 encrypted JSON:
 
 - **Plaintext tags (always):** `a` (reference to maintenance schedule), `alt`. The `a` tag uses the maintenance UUID and does not reveal task details.
-- **Encrypted content (when encryption on):** JSON with `completedDate`, `mileageAtCompletion`, `notes`, `parts`.
+- **Encrypted content (when encryption on):** JSON with `completedDate`, `mileageAtCompletion`, `notes`, `parts`, and optionally `receiptUrl` / `receiptMime` for a receipt image (URLs are not placed in plaintext tags so relay operators cannot see media links).
 
 Legacy events with plaintext tags (`completed_date`, `notes`, `part`, etc.) are still read; new events use encrypted content when encryption is enabled.
 

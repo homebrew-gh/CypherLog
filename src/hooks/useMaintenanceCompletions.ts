@@ -14,6 +14,7 @@ import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
 import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { parseImetaRow } from '@/lib/maintenanceReceipt';
 
 const ENCRYPTED_MARKER = 'nip44:';
 
@@ -23,6 +24,8 @@ interface MaintenanceCompletionData {
   mileageAtCompletion?: string;
   notes?: string;
   parts?: MaintenancePart[];
+  receiptUrl?: string;
+  receiptMime?: string;
 }
 
 // Helper to get tag value
@@ -57,6 +60,11 @@ function parseCompletionPlaintext(event: NostrEvent): MaintenanceCompletion | nu
 
   const parts = parsePartTags(event);
 
+  const imetaTag = event.tags.find(([name]) => name === 'imeta');
+  const { url: receiptUrl, mime: receiptMime } = imetaTag
+    ? parseImetaRow(imetaTag)
+    : {};
+
   return {
     id,
     maintenanceId,
@@ -64,6 +72,8 @@ function parseCompletionPlaintext(event: NostrEvent): MaintenanceCompletion | nu
     mileageAtCompletion,
     notes,
     parts: parts.length > 0 ? parts : undefined,
+    receiptUrl,
+    receiptMime,
     pubkey: event.pubkey,
     createdAt: event.created_at,
   };
@@ -90,6 +100,8 @@ async function parseCompletionEncrypted(
       mileageAtCompletion: data.mileageAtCompletion,
       notes: data.notes,
       parts: data.parts?.length ? data.parts : undefined,
+      receiptUrl: data.receiptUrl,
+      receiptMime: data.receiptMime,
       pubkey: event.pubkey,
       createdAt: event.created_at,
     };
@@ -196,11 +208,14 @@ export function useMaintenanceCompletionActions() {
     completedDate: string,
     mileageAtCompletion?: string,
     notes?: string,
-    parts?: MaintenancePart[]
+    parts?: MaintenancePart[],
+    receiptImetaRow?: string[]
   ) => {
     if (!user) throw new Error('Must be logged in');
 
     const useEncryption = isEncryptionEnabled('maintenance') && shouldEncrypt('maintenance');
+    const receiptFromImeta =
+      receiptImetaRow && receiptImetaRow.length > 0 ? parseImetaRow(receiptImetaRow) : {};
 
     const tags: string[][] = [
       ['a', `${MAINTENANCE_KIND}:${user.pubkey}:${maintenanceId}`, '', 'maintenance'],
@@ -215,6 +230,10 @@ export function useMaintenanceCompletionActions() {
         mileageAtCompletion,
         notes,
         parts,
+        ...(receiptFromImeta.url && {
+          receiptUrl: receiptFromImeta.url,
+          ...(receiptFromImeta.mime && { receiptMime: receiptFromImeta.mime }),
+        }),
       };
       content = await encryptForCategory('maintenance', payload);
       dualPublish = { plainContent: JSON.stringify(payload) };
@@ -229,6 +248,9 @@ export function useMaintenanceCompletionActions() {
           if (part.cost) partTag.push(part.cost);
           tags.push(partTag);
         }
+      }
+      if (receiptImetaRow && receiptImetaRow.length > 0 && receiptImetaRow[0] === 'imeta') {
+        tags.push(receiptImetaRow);
       }
     }
 

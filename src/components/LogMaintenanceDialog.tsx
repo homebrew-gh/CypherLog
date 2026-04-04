@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Car, Gauge, Wrench, Plus, X, Package, Building2 } from 'lucide-react';
+import { Car, Gauge, Wrench, Plus, X, Package, Building2, Receipt, ImagePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,7 +13,9 @@ import { useCompanies } from '@/hooks/useCompanies';
 import { useMaintenanceActions } from '@/hooks/useMaintenance';
 import { useMaintenanceCompletionActions } from '@/hooks/useMaintenanceCompletions';
 import { useCurrency } from '@/hooks/useCurrency';
+import { useUploadFile, useCanUploadFiles, NoPrivateServerError } from '@/hooks/useUploadFile';
 import { toast } from '@/hooks/useToast';
+import { uploadTagsToImetaRow } from '@/lib/maintenanceReceipt';
 import type { MaintenancePart } from '@/lib/types';
 
 interface LogMaintenanceDialogProps {
@@ -34,8 +36,12 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
   const { updateVehicle } = useVehicleActions();
   const { createMaintenance } = useMaintenanceActions();
   const { createCompletion } = useMaintenanceCompletionActions();
+  const { mutateAsync: uploadFile } = useUploadFile();
+  const canUploadReceipt = useCanUploadFiles();
+  const receiptInputRef = useRef<HTMLInputElement>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
 
   const [formData, setFormData] = useState({
     vehicleId: '',
@@ -66,6 +72,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
       setParts([]);
       setShowAddPart(false);
       setNewPart({ name: '', partNumber: '', cost: '' });
+      setReceiptFile(null);
     }
   }, [isOpen, preselectedVehicleId]);
 
@@ -122,6 +129,40 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
 
     setIsSubmitting(true);
     try {
+      let receiptImetaRow: string[] | undefined;
+      if (receiptFile) {
+        if (!canUploadReceipt) {
+          toast({
+            title: 'Private media server required',
+            description:
+              'Add a private Blossom server in Settings → Server Settings → Media to attach receipt images.',
+            variant: 'destructive',
+          });
+          setIsSubmitting(false);
+          return;
+        }
+        try {
+          const uploadTags = await uploadFile(receiptFile);
+          receiptImetaRow = uploadTagsToImetaRow(uploadTags);
+        } catch (err) {
+          if (err instanceof NoPrivateServerError) {
+            toast({
+              title: 'Private media server required',
+              description: err.message,
+              variant: 'destructive',
+            });
+          } else {
+            toast({
+              title: 'Upload failed',
+              description: err instanceof Error ? err.message : 'Could not upload receipt image.',
+              variant: 'destructive',
+            });
+          }
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       // Create a log-only maintenance schedule
       const maintenanceId = await createMaintenance({
         vehicleId: formData.vehicleId,
@@ -136,7 +177,8 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
         formData.completedDate, // Already in MM/DD/YYYY format
         formData.mileage.trim() || undefined,
         undefined, // notes
-        parts.length > 0 ? parts : undefined
+        parts.length > 0 ? parts : undefined,
+        receiptImetaRow
       );
 
       // If mileage was provided, update the vehicle's mileage
@@ -355,6 +397,59 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
                 <Plus className="h-4 w-4 mr-2" />
                 Add Part
               </Button>
+            )}
+          </div>
+
+          {/* Receipt (private Blossom) */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Receipt className="h-4 w-4" />
+              Add receipt (optional)
+            </Label>
+            {!canUploadReceipt ? (
+              <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3 bg-muted/30">
+                Configure a private media server in Settings → Server Settings → Media to attach receipt photos.
+                Receipts are uploaded only to your private Blossom server.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  ref={receiptInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    setReceiptFile(file ?? null);
+                    e.target.value = '';
+                  }}
+                />
+                {receiptFile ? (
+                  <div className="flex items-center gap-2 flex-wrap rounded-md border p-2 bg-muted/30">
+                    <span className="text-sm truncate flex-1 min-w-0">{receiptFile.name}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => setReceiptFile(null)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full sm:w-auto"
+                    onClick={() => receiptInputRef.current?.click()}
+                  >
+                    <ImagePlus className="h-4 w-4 mr-2" />
+                    Choose receipt image
+                  </Button>
+                )}
+              </div>
             )}
           </div>
 

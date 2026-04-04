@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Safari pinned tab: monochrome glyph; tinted via <link color="..."> -->
+  <g transform="translate(256, 256) scale(1.05) translate(-256, -256)" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M160 208 L160 144 Q160 48 256 48 Q352 48 352 144 L352 208" stroke-width="32"/>
+    <path d="M112 240 L256 144 L400 240" stroke-width="20"/>
+    <path d="M112 240 L112 448 L400 448 L400 240" stroke-width="16"/>
+    <g stroke-width="4" opacity="0.95">
+      <path d="M144 288 L176 288 L176 264"/>
+      <path d="M144 336 L168 336 L168 312"/>
+      <path d="M144 384 L160 384 L160 360"/>
+      <path d="M144 432 L184 432 L184 408"/>
+      <path d="M368 288 L336 288 L336 264"/>
+      <path d="M368 336 L344 336 L344 312"/>
+      <path d="M368 384 L352 384 L352 360"/>
+      <path d="M368 432 L328 432 L328 408"/>
+      <path d="M208 264 L208 288"/>
+      <path d="M232 256 L232 280"/>
+      <path d="M280 256 L280 280"/>
+      <path d="M304 264 L304 288"/>
+      <path d="M192 448 L192 424"/>
+      <path d="M320 448 L320 424"/>
+      <circle cx="176" cy="288" r="8" fill="#000" stroke="none"/>
+      <circle cx="168" cy="336" r="8" fill="#000" stroke="none"/>
+      <circle cx="160" cy="384" r="8" fill="#000" stroke="none"/>
+      <circle cx="184" cy="432" r="8" fill="#000" stroke="none"/>
+      <circle cx="336" cy="288" r="8" fill="#000" stroke="none"/>
+      <circle cx="344" cy="336" r="8" fill="#000" stroke="none"/>
+      <circle cx="352" cy="384" r="8" fill="#000" stroke="none"/>
+      <circle cx="328" cy="432" r="8" fill="#000" stroke="none"/>
+      <circle cx="208" cy="288" r="8" fill="#000" stroke="none"/>
+      <circle cx="232" cy="280" r="8" fill="#000" stroke="none"/>
+      <circle cx="280" cy="280" r="8" fill="#000" stroke="none"/>
+      <circle cx="304" cy="288" r="8" fill="#000" stroke="none"/>
+      <circle cx="192" cy="424" r="8" fill="#000" stroke="none"/>
+      <circle cx="320" cy="424" r="8" fill="#000" stroke="none"/>
+    </g>
+    <ellipse cx="256" cy="320" rx="32" ry="40" stroke-width="8"/>
+    <path d="M232 344 L232 408 L280 408 L280 344" stroke-width="8"/>
+  </g>
+</svg>

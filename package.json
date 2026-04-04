@@ -9,6 +9,7 @@
     "build": "npm i --silent && vite build -l error && cp dist/index.html dist/404.html && echo 'Project built successfully!'",
     "cap:sync": "npm run build && npx cap sync android",
     "cap:open:android": "npx cap open android",
+    "generate:android-icons": "node scripts/generate-android-launcher-icons.mjs",
     "test": "npm i --silent && tsc --noEmit && eslint && vitest run --reporter=dot --silent && vite build -l error && cp dist/index.html dist/404.html && echo 'All tests passed!'"
   },
   "dependencies": {
@@ -96,6 +97,7 @@
     "globals": "^15.9.0",
     "jsdom": "^26.1.0",
     "postcss": "^8.4.47",
+    "sharp": "^0.33.5",
     "tailwindcss": "^3.4.11",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",

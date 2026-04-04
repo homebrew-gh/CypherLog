@@ -19,11 +19,11 @@ import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import { logger } from '@/lib/logger';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { APPLIANCE_KIND, type Appliance } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventByAddress } from '@/lib/eventCache';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 // Encrypted content marker
 const ENCRYPTED_MARKER = 'nip44:';
@@ -118,7 +118,8 @@ function getDeletedApplianceIds(deletionEvents: NostrEvent[], pubkey: string): S
 async function parseEventsToAppliances(
   events: NostrEvent[],
   pubkey: string,
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<Appliance[]> {
   // Separate appliance events from deletion events
   const applianceEvents = events.filter(e => e.kind === APPLIANCE_KIND);
@@ -129,7 +130,7 @@ async function parseEventsToAppliances(
 
   const results = await runWithConcurrencyLimit(
     applianceEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<Appliance | null> => {
       const id = getTagValue(event, 'd');
       if (!id || deletedIds.has(id)) return null;
@@ -146,6 +147,7 @@ async function parseEventsToAppliances(
 export function useAppliances() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
   const { isEncryptionEnabled } = useEncryptionSettings();
 
   const canLoadAppliances =
@@ -159,7 +161,12 @@ export function useAppliances() {
 
       const cachedEvents = await getCachedEvents([APPLIANCE_KIND, 5], user.pubkey);
       if (cachedEvents.length > 0) {
-        const appliances = await parseEventsToAppliances(cachedEvents, user.pubkey, decryptForCategory);
+        const appliances = await parseEventsToAppliances(
+          cachedEvents,
+          user.pubkey,
+          decryptForCategory,
+          decryptConcurrency,
+        );
         return appliances;
       }
       return [];

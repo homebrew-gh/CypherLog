@@ -6,14 +6,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { COMPANY_KIND, type Company, type Invoice } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventByAddress } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 // Encrypted content marker
 const ENCRYPTED_MARKER = 'nip44:';
@@ -119,7 +119,8 @@ function getDeletedCompanyIds(deletionEvents: NostrEvent[], pubkey: string): Set
 async function parseEventsToCompanies(
   events: NostrEvent[],
   pubkey: string,
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<Company[]> {
   // Separate company events from deletion events
   const companyEvents = events.filter(e => e.kind === COMPANY_KIND);
@@ -130,7 +131,7 @@ async function parseEventsToCompanies(
 
   const results = await runWithConcurrencyLimit(
     companyEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<Company | null> => {
       const id = getTagValue(event, 'd');
       if (!id || deletedIds.has(id)) return null;
@@ -147,6 +148,7 @@ async function parseEventsToCompanies(
 export function useCompanies() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   // Main query - loads from cache only
   // Background sync is handled centrally by useDataSyncStatus
@@ -159,7 +161,12 @@ export function useCompanies() {
       const cachedEvents = await getCachedEvents([COMPANY_KIND, 5], user.pubkey);
       
       if (cachedEvents.length > 0) {
-        const companies = await parseEventsToCompanies(cachedEvents, user.pubkey, decryptForCategory);
+        const companies = await parseEventsToCompanies(
+          cachedEvents,
+          user.pubkey,
+          decryptForCategory,
+          decryptConcurrency,
+        );
         return companies;
       }
 

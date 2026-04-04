@@ -6,14 +6,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { VET_VISIT_KIND, PET_KIND, type VetVisit, type VetVisitType } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventById } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 // Encrypted content marker
 const ENCRYPTED_MARKER = 'nip44:';
@@ -112,7 +112,8 @@ function getDeletedVetVisitIds(deletionEvents: NostrEvent[]): Set<string> {
 // Parse events into vet visits
 async function parseEventsToVetVisits(
   events: NostrEvent[],
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<VetVisit[]> {
   // Separate vet visit events from deletion events
   const vetVisitEvents = events.filter(e => e.kind === VET_VISIT_KIND);
@@ -123,7 +124,7 @@ async function parseEventsToVetVisits(
 
   const results = await runWithConcurrencyLimit(
     vetVisitEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<VetVisit | null> => {
       if (deletedIds.has(event.id)) return null;
       if (event.content?.startsWith(ENCRYPTED_MARKER)) {
@@ -147,6 +148,7 @@ async function parseEventsToVetVisits(
 export function useVetVisits() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   // Main query - loads from cache only
   // Background sync is handled centrally by useDataSyncStatus
@@ -161,7 +163,11 @@ export function useVetVisits() {
       const cachedEvents = await getCachedEvents([VET_VISIT_KIND, 5], user.pubkey);
 
       if (cachedEvents.length > 0) {
-        const vetVisits = await parseEventsToVetVisits(cachedEvents, decryptForCategory);
+        const vetVisits = await parseEventsToVetVisits(
+          cachedEvents,
+          decryptForCategory,
+          decryptConcurrency,
+        );
         return vetVisits;
       }
 

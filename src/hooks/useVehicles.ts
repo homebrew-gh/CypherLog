@@ -6,14 +6,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { VEHICLE_KIND, type Vehicle, type VehicleDocument } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventByAddress } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 // Encrypted content marker
 const ENCRYPTED_MARKER = 'nip44:';
@@ -145,7 +145,8 @@ function getDeletedVehicleIds(deletionEvents: NostrEvent[], pubkey: string): Set
 async function parseEventsToVehicles(
   events: NostrEvent[],
   pubkey: string,
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<Vehicle[]> {
   // Separate vehicle events from deletion events
   const vehicleEvents = events.filter(e => e.kind === VEHICLE_KIND);
@@ -156,7 +157,7 @@ async function parseEventsToVehicles(
 
   const results = await runWithConcurrencyLimit(
     vehicleEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<Vehicle | null> => {
       const id = getTagValue(event, 'd');
       if (!id || deletedIds.has(id)) return null;
@@ -173,6 +174,7 @@ async function parseEventsToVehicles(
 export function useVehicles() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
   const { isEncryptionEnabled } = useEncryptionSettings();
 
   // When vehicles encryption is on, wait for signer (NIP-44) before running the query
@@ -190,7 +192,12 @@ export function useVehicles() {
         const cachedEvents = await getCachedEvents([VEHICLE_KIND, 5], user.pubkey);
         if (cachedEvents.length === 0) return [];
 
-        const vehicles = await parseEventsToVehicles(cachedEvents, user.pubkey, decryptForCategory);
+        const vehicles = await parseEventsToVehicles(
+          cachedEvents,
+          user.pubkey,
+          decryptForCategory,
+          decryptConcurrency,
+        );
         return vehicles;
       } catch (error) {
         logger.error('[Vehicles] Failed to load vehicles:', error);

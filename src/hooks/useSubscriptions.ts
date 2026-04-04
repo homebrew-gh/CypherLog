@@ -6,7 +6,7 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import {
   SUBSCRIPTION_KIND,
@@ -246,7 +246,8 @@ export function getDeletedSubscriptionIds(deletionEvents: NostrEvent[], pubkey: 
 export async function parseEventsToSubscriptions(
   events: NostrEvent[],
   pubkey: string,
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number = DECRYPT_CONCURRENCY,
 ): Promise<Subscription[]> {
   // Separate subscription events from deletion events
   const readKinds = new Set<number>(SUBSCRIPTION_KINDS_READ);
@@ -258,7 +259,7 @@ export async function parseEventsToSubscriptions(
 
   const results = await runWithConcurrencyLimit(
     subscriptionEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<ParsedSubscriptionEvent | null> => {
       const id = getNormalizedSubscriptionId(event);
       if (!id || deletedIds.has(id) || deletedIds.has(event.id)) return null;
@@ -323,6 +324,7 @@ export async function parseEventsToSubscriptions(
 export function useSubscriptions() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   // Main query - loads from cache only
   // Background sync is handled centrally by useDataSyncStatus
@@ -335,7 +337,12 @@ export function useSubscriptions() {
       const cachedEvents = await getCachedEvents([...SUBSCRIPTION_KINDS_READ, 5], user.pubkey);
       
       if (cachedEvents.length > 0) {
-        const subscriptions = await parseEventsToSubscriptions(cachedEvents, user.pubkey, decryptForCategory);
+        const subscriptions = await parseEventsToSubscriptions(
+          cachedEvents,
+          user.pubkey,
+          decryptForCategory,
+          decryptConcurrency,
+        );
         return subscriptions;
       }
 

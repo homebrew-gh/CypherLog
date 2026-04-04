@@ -6,14 +6,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { PROJECT_ENTRY_KIND, PROJECT_KIND, type ProjectEntry } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventById } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 // Encrypted content marker
 const ENCRYPTED_MARKER = 'nip44:';
@@ -114,7 +114,8 @@ function getDeletedEntryIds(deletionEvents: NostrEvent[]): Set<string> {
 // Parse events into project entries
 async function parseEventsToEntries(
   events: NostrEvent[],
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<ProjectEntry[]> {
   // Separate entry events from deletion events
   const entryEvents = events.filter(e => e.kind === PROJECT_ENTRY_KIND);
@@ -125,7 +126,7 @@ async function parseEventsToEntries(
 
   const results = await runWithConcurrencyLimit(
     entryEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<ProjectEntry | null> => {
       if (deletedIds.has(event.id)) return null;
       if (event.content?.startsWith(ENCRYPTED_MARKER)) {
@@ -147,6 +148,7 @@ async function parseEventsToEntries(
 export function useProjectEntries(projectId?: string) {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   // Main query - loads from cache only
   const query = useQuery({
@@ -160,7 +162,7 @@ export function useProjectEntries(projectId?: string) {
       const cachedEvents = await getCachedEvents([PROJECT_ENTRY_KIND, 5], user.pubkey);
       
       if (cachedEvents.length > 0) {
-        const entries = await parseEventsToEntries(cachedEvents, decryptForCategory);
+        const entries = await parseEventsToEntries(cachedEvents, decryptForCategory, decryptConcurrency);
         // Filter to only entries for this project
         return entries.filter(e => e.projectId === projectId);
       }
@@ -180,6 +182,7 @@ export function useProjectEntries(projectId?: string) {
 export function useAllProjectEntries() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   // Query for all entries across all projects
   const query = useQuery({
@@ -193,7 +196,7 @@ export function useAllProjectEntries() {
       const cachedEvents = await getCachedEvents([PROJECT_ENTRY_KIND, 5], user.pubkey);
       
       if (cachedEvents.length > 0) {
-        return await parseEventsToEntries(cachedEvents, decryptForCategory);
+        return await parseEventsToEntries(cachedEvents, decryptForCategory, decryptConcurrency);
       }
 
       return [];

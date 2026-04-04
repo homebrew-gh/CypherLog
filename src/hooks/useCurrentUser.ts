@@ -1,21 +1,33 @@
 import { type NLoginType, NUser, useNostrLogin } from '@nostrify/react/login';
 import { useNostr } from '@nostrify/react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef, useEffect } from 'react';
 
-import { AmberAndroidSigner } from '@/lib/amberAndroidSigner';
+import { clearAmberAndroidSignerCache, obtainAmberAndroidSigner } from '@/lib/amberAndroidSigner';
 import { useAuthor } from './useAuthor.ts';
 import { logger } from '@/lib/logger';
 
 export function useCurrentUser() {
   const { nostr } = useNostr();
   const { logins } = useNostrLogin();
+  // Bunker sign-in needs the live pool; other login types must not recreate `loginToUser`
+  // when `nostr` changes — a new AmberAndroidSigner per pool swap breaks serial native decrypt.
+  const nostrRef = useRef(nostr);
+  useEffect(() => {
+    nostrRef.current = nostr;
+  }, [nostr]);
 
-  const loginToUser = useCallback((login: NLoginType): NUser  => {
+  useEffect(() => {
+    if (logins.length === 0) {
+      clearAmberAndroidSignerCache();
+    }
+  }, [logins.length]);
+
+  const loginToUser = useCallback((login: NLoginType): NUser => {
     switch (login.type) {
       case 'nsec': // Nostr login with secret key
         return NUser.fromNsecLogin(login);
       case 'bunker': // Nostr login with NIP-46 "bunker://" URI
-        return NUser.fromBunkerLogin(login, nostr);
+        return NUser.fromBunkerLogin(login, nostrRef.current);
       case 'extension': // Nostr login with NIP-07 browser extension
         return NUser.fromExtensionLogin(login);
       case 'x-amber-android': {
@@ -26,13 +38,13 @@ export function useCurrentUser() {
         return new NUser(
           login.type,
           login.pubkey,
-          new AmberAndroidSigner({ signerPackage: pkg, pubkey: login.pubkey }),
+          obtainAmberAndroidSigner(login.id, { signerPackage: pkg, pubkey: login.pubkey }),
         );
       }
       default:
         throw new Error(`Unsupported login type: ${login.type}`);
     }
-  }, [nostr]);
+  }, []);
 
   const users = useMemo(() => {
     const users: NUser[] = [];

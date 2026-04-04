@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
+import { useNostrLogin } from '@nostrify/react/login';
 import { useCurrentUser } from './useCurrentUser';
 import { useEncryptionSettings, type EncryptableCategory } from '@/contexts/EncryptionContext';
+import { DECRYPT_CONCURRENCY } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 
 /**
@@ -187,4 +189,13 @@ export function useEncryption() {
     decryptForCategory,
     shouldEncrypt,
   };
+}
+
+/**
+ * Amber NIP-55 decrypt uses one Activity result channel; keep a single in-flight decrypt
+ * from application code in addition to the native serial queue in `amberAndroidSigner`.
+ */
+export function useDecryptConcurrency(): number {
+  const { logins } = useNostrLogin();
+  return logins[0]?.type === 'x-amber-android' ? 1 : DECRYPT_CONCURRENCY;
 }

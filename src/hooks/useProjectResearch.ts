@@ -6,7 +6,7 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import {
   PROJECT_RESEARCH_KIND,
@@ -18,7 +18,7 @@ import { cacheEvents, getCachedEvents, deleteCachedEventById } from '@/lib/event
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 const ENCRYPTED_MARKER = 'nip44:';
 
@@ -120,7 +120,8 @@ function getDeletedResearchIds(deletionEvents: NostrEvent[]): Set<string> {
 
 async function parseEventsToNotes(
   events: NostrEvent[],
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<ProjectResearchNote[]> {
   const noteEvents = events.filter((e) => e.kind === PROJECT_RESEARCH_KIND);
   const deletionEvents = events.filter((e) => e.kind === 5);
@@ -128,7 +129,7 @@ async function parseEventsToNotes(
 
   const results = await runWithConcurrencyLimit(
     noteEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<ProjectResearchNote | null> => {
       if (deletedIds.has(event.id)) return null;
       if (event.content?.startsWith(ENCRYPTED_MARKER)) {
@@ -146,13 +147,14 @@ async function parseEventsToNotes(
 export function useProjectResearch(projectId?: string) {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   return useQuery({
     queryKey: ['project-research', user?.pubkey, projectId],
     queryFn: async () => {
       if (!user?.pubkey || !projectId) return [];
       const cached = await getCachedEvents([PROJECT_RESEARCH_KIND, 5], user.pubkey);
-      const notes = await parseEventsToNotes(cached, decryptForCategory);
+      const notes = await parseEventsToNotes(cached, decryptForCategory, decryptConcurrency);
       return notes.filter((n) => n.projectId === projectId);
     },
     enabled: !!user?.pubkey && !!projectId,
@@ -167,13 +169,14 @@ export function useProjectResearch(projectId?: string) {
 export function useAllProjectResearch() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   return useQuery({
     queryKey: ['project-research', user?.pubkey],
     queryFn: async () => {
       if (!user?.pubkey) return [];
       const cached = await getCachedEvents([PROJECT_RESEARCH_KIND, 5], user.pubkey);
-      return parseEventsToNotes(cached, decryptForCategory);
+      return parseEventsToNotes(cached, decryptForCategory, decryptConcurrency);
     },
     enabled: !!user?.pubkey,
     staleTime: Infinity,

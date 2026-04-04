@@ -6,14 +6,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { PROJECT_TASK_KIND, PROJECT_KIND, type ProjectTask } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventById } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 // Encrypted content marker
 const ENCRYPTED_MARKER = 'nip44:';
@@ -105,7 +105,8 @@ function getDeletedTaskIds(deletionEvents: NostrEvent[]): Set<string> {
 // Parse events into project tasks
 async function parseEventsToTasks(
   events: NostrEvent[],
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<ProjectTask[]> {
   // Separate task events from deletion events
   const taskEvents = events.filter(e => e.kind === PROJECT_TASK_KIND);
@@ -116,7 +117,7 @@ async function parseEventsToTasks(
 
   const results = await runWithConcurrencyLimit(
     taskEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<ProjectTask | null> => {
       if (deletedIds.has(event.id)) return null;
       if (event.content?.startsWith(ENCRYPTED_MARKER)) {
@@ -146,6 +147,7 @@ async function parseEventsToTasks(
 export function useProjectTasks(projectId?: string) {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   const query = useQuery({
     queryKey: ['project-tasks', user?.pubkey, projectId],
@@ -158,7 +160,7 @@ export function useProjectTasks(projectId?: string) {
       const cachedEvents = await getCachedEvents([PROJECT_TASK_KIND, 5], user.pubkey);
       
       if (cachedEvents.length > 0) {
-        const tasks = await parseEventsToTasks(cachedEvents, decryptForCategory);
+        const tasks = await parseEventsToTasks(cachedEvents, decryptForCategory, decryptConcurrency);
         // Filter to only tasks for this project
         return tasks.filter(t => t.projectId === projectId);
       }

@@ -6,14 +6,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { WARRANTY_KIND, type Warranty, type WarrantyDocument, type WarrantyLinkedType } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventByAddress } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 // Encrypted content marker
 const ENCRYPTED_MARKER = 'nip44:';
@@ -129,7 +129,8 @@ function getDeletedWarrantyIds(deletionEvents: NostrEvent[], pubkey: string): Se
 async function parseEventsToWarranties(
   events: NostrEvent[],
   pubkey: string,
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<Warranty[]> {
   // Separate warranty events from deletion events
   const warrantyEvents = events.filter(e => e.kind === WARRANTY_KIND);
@@ -140,7 +141,7 @@ async function parseEventsToWarranties(
 
   const results = await runWithConcurrencyLimit(
     warrantyEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<Warranty | null> => {
       const id = getTagValue(event, 'd');
       if (!id || deletedIds.has(id)) return null;
@@ -157,6 +158,7 @@ async function parseEventsToWarranties(
 export function useWarranties() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   // Main query - loads from cache only
   // Background sync is handled centrally by useDataSyncStatus
@@ -169,7 +171,12 @@ export function useWarranties() {
       const cachedEvents = await getCachedEvents([WARRANTY_KIND, 5], user.pubkey);
       
       if (cachedEvents.length > 0) {
-        const warranties = await parseEventsToWarranties(cachedEvents, user.pubkey, decryptForCategory);
+        const warranties = await parseEventsToWarranties(
+          cachedEvents,
+          user.pubkey,
+          decryptForCategory,
+          decryptConcurrency,
+        );
         return warranties;
       }
 

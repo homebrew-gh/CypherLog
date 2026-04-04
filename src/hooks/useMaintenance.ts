@@ -7,14 +7,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { MAINTENANCE_KIND, APPLIANCE_KIND, VEHICLE_KIND, COMPANY_KIND, type MaintenanceSchedule, type MaintenancePart } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventByAddress } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 const ENCRYPTED_MARKER = 'nip44:';
 
@@ -226,7 +226,8 @@ function getDeletedVehicleIds(deletionEvents: NostrEvent[], pubkey: string): Set
 async function parseEventsToMaintenance(
   events: NostrEvent[],
   pubkey: string,
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<MaintenanceSchedule[]> {
   const maintenanceEvents = events.filter(e => e.kind === MAINTENANCE_KIND);
   const deletionEvents = events.filter(e => e.kind === 5);
@@ -237,7 +238,7 @@ async function parseEventsToMaintenance(
 
   const results = await runWithConcurrencyLimit(
     maintenanceEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<MaintenanceSchedule | null> => {
       const schedule = event.content?.startsWith(ENCRYPTED_MARKER)
         ? await parseMaintenanceEncrypted(event, (c) => decryptForCategory<MaintenanceScheduleData>(c))
@@ -255,6 +256,7 @@ async function parseEventsToMaintenance(
 export function useMaintenance() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
   const { isEncryptionEnabled } = useEncryptionSettings();
 
   const canLoadMaintenance =
@@ -268,7 +270,12 @@ export function useMaintenance() {
 
       const cachedEvents = await getCachedEvents([MAINTENANCE_KIND, 5], user.pubkey);
       if (cachedEvents.length > 0) {
-        return parseEventsToMaintenance(cachedEvents, user.pubkey, decryptForCategory);
+        return parseEventsToMaintenance(
+          cachedEvents,
+          user.pubkey,
+          decryptForCategory,
+          decryptConcurrency,
+        );
       }
       return [];
     },

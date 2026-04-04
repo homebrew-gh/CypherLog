@@ -6,14 +6,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { MAINTENANCE_COMPLETION_KIND, MAINTENANCE_KIND, type MaintenanceCompletion, type MaintenancePart } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventById } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 import { parseImetaRow } from '@/lib/maintenanceReceipt';
 
 const ENCRYPTED_MARKER = 'nip44:';
@@ -130,7 +130,8 @@ function getDeletedCompletionIds(deletionEvents: NostrEvent[]): Set<string> {
 // Parse events into maintenance completions (handles both encrypted and plaintext)
 async function parseEventsToCompletions(
   events: NostrEvent[],
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<MaintenanceCompletion[]> {
   const completionEvents = events.filter(e => e.kind === MAINTENANCE_COMPLETION_KIND);
   const deletionEvents = events.filter(e => e.kind === 5);
@@ -138,7 +139,7 @@ async function parseEventsToCompletions(
 
   const results = await runWithConcurrencyLimit(
     completionEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<MaintenanceCompletion | null> => {
       const completion = event.content?.startsWith(ENCRYPTED_MARKER)
         ? await parseCompletionEncrypted(event, (c) => decryptForCategory<MaintenanceCompletionData>(c))
@@ -160,6 +161,7 @@ async function parseEventsToCompletions(
 export function useMaintenanceCompletions() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
   const { isEncryptionEnabled } = useEncryptionSettings();
 
   const canLoadCompletions =
@@ -173,7 +175,7 @@ export function useMaintenanceCompletions() {
 
       const cachedEvents = await getCachedEvents([MAINTENANCE_COMPLETION_KIND, 5], user.pubkey);
       if (cachedEvents.length > 0) {
-        return parseEventsToCompletions(cachedEvents, decryptForCategory);
+        return parseEventsToCompletions(cachedEvents, decryptForCategory, decryptConcurrency);
       }
       return [];
     },

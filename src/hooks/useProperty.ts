@@ -10,14 +10,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { PROPERTY_KIND, type Property } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventByAddress } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 const ENCRYPTED_MARKER = 'nip44:';
 
@@ -95,7 +95,8 @@ function getDeletedPropertyIds(deletionEvents: NostrEvent[], pubkey: string): Se
 async function parseEventsToProperties(
   events: NostrEvent[],
   pubkey: string,
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<Property[]> {
   const propertyEvents = events.filter((e) => e.kind === PROPERTY_KIND);
   const deletionEvents = events.filter((e) => e.kind === 5);
@@ -103,7 +104,7 @@ async function parseEventsToProperties(
 
   const results = await runWithConcurrencyLimit(
     propertyEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<Property | null> => {
       const d = getTagValue(event, 'd');
       if (!d || deletedIds.has(d)) return null;
@@ -126,13 +127,14 @@ async function parseEventsToProperties(
 export function useProperties() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   return useQuery({
     queryKey: ['properties', user?.pubkey],
     queryFn: async () => {
       if (!user?.pubkey) return [];
       const cached = await getCachedEvents([PROPERTY_KIND, 5], user.pubkey);
-      return parseEventsToProperties(cached, user.pubkey, decryptForCategory);
+      return parseEventsToProperties(cached, user.pubkey, decryptForCategory, decryptConcurrency);
     },
     enabled: !!user?.pubkey,
     staleTime: Infinity,

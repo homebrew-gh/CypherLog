@@ -6,14 +6,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { PROJECT_KIND, type Project } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventByAddress } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 // Encrypted content marker
 const ENCRYPTED_MARKER = 'nip44:';
@@ -112,7 +112,8 @@ function getDeletedProjectIds(deletionEvents: NostrEvent[], pubkey: string): Set
 async function parseEventsToProjects(
   events: NostrEvent[],
   pubkey: string,
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<Project[]> {
   // Separate project events from deletion events
   const projectEvents = events.filter(e => e.kind === PROJECT_KIND);
@@ -123,7 +124,7 @@ async function parseEventsToProjects(
 
   const results = await runWithConcurrencyLimit(
     projectEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<Project | null> => {
       const id = getTagValue(event, 'd');
       if (!id || deletedIds.has(id)) return null;
@@ -140,6 +141,7 @@ async function parseEventsToProjects(
 export function useProjects() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   // Main query - loads from cache only
   // Background sync is handled centrally by useDataSyncStatus
@@ -154,7 +156,12 @@ export function useProjects() {
       const cachedEvents = await getCachedEvents([PROJECT_KIND, 5], user.pubkey);
       
       if (cachedEvents.length > 0) {
-        const projects = await parseEventsToProjects(cachedEvents, user.pubkey, decryptForCategory);
+        const projects = await parseEventsToProjects(
+          cachedEvents,
+          user.pubkey,
+          decryptForCategory,
+          decryptConcurrency,
+        );
         return projects;
       }
 

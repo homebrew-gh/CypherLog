@@ -6,14 +6,14 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
-import { useEncryption, isAbortError } from './useEncryption';
+import { useEncryption, useDecryptConcurrency, isAbortError } from './useEncryption';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { COMPANY_WORK_LOG_KIND, COMPANY_KIND, type CompanyWorkLog } from '@/lib/types';
 import { cacheEvents, getCachedEvents, deleteCachedEventById } from '@/lib/eventCache';
 import { isRelayUrlSecure } from '@/lib/relay';
 import { getSiblingEventIdsForDeletion } from '@/lib/relayDeletion';
 import { logger } from '@/lib/logger';
-import { runWithConcurrencyLimit, DECRYPT_CONCURRENCY } from '@/lib/utils';
+import { runWithConcurrencyLimit } from '@/lib/utils';
 
 const ENCRYPTED_MARKER = 'nip44';
 
@@ -77,7 +77,8 @@ function getDeletedWorkLogIds(deletionEvents: NostrEvent[]): Set<string> {
 
 async function parseEventsToWorkLogs(
   events: NostrEvent[],
-  decryptForCategory: <T>(content: string) => Promise<T>
+  decryptForCategory: <T>(content: string) => Promise<T>,
+  decryptConcurrency: number,
 ): Promise<CompanyWorkLog[]> {
   const workLogEvents = events.filter((e) => e.kind === COMPANY_WORK_LOG_KIND);
   const deletionEvents = events.filter((e) => e.kind === 5);
@@ -85,7 +86,7 @@ async function parseEventsToWorkLogs(
 
   const results = await runWithConcurrencyLimit(
     workLogEvents,
-    DECRYPT_CONCURRENCY,
+    decryptConcurrency,
     async (event): Promise<CompanyWorkLog | null> => {
       if (deletedIds.has(event.id)) return null;
       if (event.content?.startsWith(ENCRYPTED_MARKER)) {
@@ -126,6 +127,7 @@ async function parseEventsToWorkLogs(
 export function useCompanyWorkLogs() {
   const { user } = useCurrentUser();
   const { decryptForCategory } = useEncryption();
+  const decryptConcurrency = useDecryptConcurrency();
 
   const query = useQuery({
     queryKey: ['company-work-logs', user?.pubkey],
@@ -133,7 +135,7 @@ export function useCompanyWorkLogs() {
       if (!user?.pubkey) return [];
       const cachedEvents = await getCachedEvents([COMPANY_WORK_LOG_KIND, 5], user.pubkey);
       if (cachedEvents.length > 0) {
-        return parseEventsToWorkLogs(cachedEvents, decryptForCategory);
+        return parseEventsToWorkLogs(cachedEvents, decryptForCategory, decryptConcurrency);
       }
       return [];
     },

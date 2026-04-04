@@ -51,6 +51,18 @@ export const AmberSigner = registerPlugin<AmberSignerPlugin>('AmberSigner', {
   web: () => new AmberSignerWeb(),
 });
 
+/**
+ * True when running inside the Cypher Log Android WebView (Capacitor).
+ * Prefer `window.androidBridge` because it is set by the native layer and avoids
+ * rare timing cases where `getPlatform()` has not updated yet on first paint.
+ */
 export function isCapacitorAndroid(): boolean {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  if (typeof window === 'undefined') return false;
+  const win = window as Window & { androidBridge?: unknown };
+  if (win.androidBridge != null) return true;
+  try {
+    return Capacitor.getPlatform() === 'android';
+  } catch {
+    return false;
+  }
 }

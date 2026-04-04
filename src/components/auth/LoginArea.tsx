@@ -9,7 +9,8 @@ import { useLoggedInAccounts } from '@/hooks/useLoggedInAccounts';
 import { useLoginActions } from '@/hooks/useLoginActions';
 import { AccountSwitcher } from './AccountSwitcher';
 import { cn } from '@/lib/utils';
-import { AmberSigner, isCapacitorAndroid } from '@/lib/capacitor/amberSignerPlugin';
+import { AmberSigner } from '@/lib/capacitor/amberSignerPlugin';
+import { useCapacitorAndroid } from '@/hooks/useCapacitorAndroid';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
 
@@ -27,7 +28,7 @@ export function LoginArea({ className }: LoginAreaProps) {
   const [amberErr, setAmberErr] = useState<string | null>(null);
   const [amberInstalled, setAmberInstalled] = useState<boolean | null>(null);
 
-  const isAndroidApp = isCapacitorAndroid();
+  const isAndroidApp = useCapacitorAndroid();
 
   useEffect(() => {
     if (!isAndroidApp || currentUser) {
@@ -111,19 +112,30 @@ export function LoginArea({ className }: LoginAreaProps) {
           )}
         </div>
       ) : (
-        <div className="flex gap-3 justify-center">
-          <Button
-            onClick={() => setLoginDialogOpen(true)}
-            className='flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground w-full font-medium transition-all hover:bg-primary/90 animate-scale-in'
-          >
-            <span className='truncate'>Log in</span>
-          </Button><Button
-            onClick={() => setSignupDialogOpen(true)}
-            variant="outline"
-            className="flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all"
-          >
-            <span>Sign up</span>
-          </Button>
+        <div className="flex flex-col gap-2 w-full max-w-sm">
+          {typeof navigator !== 'undefined' &&
+            /Android/i.test(navigator.userAgent) &&
+            !isAndroidApp && (
+              <p className="text-[11px] text-center text-muted-foreground px-1 leading-snug">
+                <strong>Log in with Amber</strong> appears when you use the installable Cypher Log Android app. In Chrome
+                or a home-screen shortcut, use Log in below (secret key, extension, or Nostr Connect).
+              </p>
+            )}
+          <div className="flex gap-3 justify-center">
+            <Button
+              onClick={() => setLoginDialogOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground w-full font-medium transition-all hover:bg-primary/90 animate-scale-in"
+            >
+              <span className="truncate">Log in</span>
+            </Button>
+            <Button
+              onClick={() => setSignupDialogOpen(true)}
+              variant="outline"
+              className="flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all"
+            >
+              <span>Sign up</span>
+            </Button>
+          </div>
         </div>
       )}
 

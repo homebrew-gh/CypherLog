@@ -6,7 +6,7 @@ import QRCode from 'qrcode';
 import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, Copy, Check, QrCode, ExternalLink } from 'lucide-react';
 import { useAppContext } from '@/hooks/useAppContext';
-import { isCapacitorAndroid } from '@/lib/capacitor/amberSignerPlugin';
+import { useCapacitorAndroid } from '@/hooks/useCapacitorAndroid';
 import { logger } from '@/lib/logger';
 
 export interface NostrConnectResult {
@@ -165,7 +165,7 @@ export function NostrConnectLogin({
   } | null>(null);
 
   const completedRef = useRef(false);
-  const isAndroidApp = isCapacitorAndroid();
+  const isAndroidApp = useCapacitorAndroid();
 
   const getConnectRelay = useCallback(() => {
     const writeRelay = configRef.current.relayMetadata.relays.find((r) => r.write);

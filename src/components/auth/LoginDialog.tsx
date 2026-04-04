@@ -10,10 +10,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useLoginActions } from '@/hooks/useLoginActions';
+import { useCapacitorAndroid } from '@/hooks/useCapacitorAndroid';
 import { DialogTitle } from '@radix-ui/react-dialog';
 import { NostrConnectLogin, type NostrConnectResult } from './NostrConnectLogin';
 import { logger } from '@/lib/logger';
-import { AmberSigner, isCapacitorAndroid } from '@/lib/capacitor/amberSignerPlugin';
+import { AmberSigner } from '@/lib/capacitor/amberSignerPlugin';
 
 interface LoginDialogProps {
   isOpen: boolean;
@@ -51,6 +52,8 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const login = useLoginActions();
+  const isAndroidApp = useCapacitorAndroid();
+  const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
 
   // Reset all state when dialog opens/closes
   useEffect(() => {
@@ -62,7 +65,7 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
       setBunkerUri('');
       setErrors({});
       setShowQrScanner(false);
-      setActiveTab(isCapacitorAndroid() ? 'key' : 'bunker');
+      setActiveTab(isAndroidApp ? 'key' : 'bunker');
       setAndroidOtherMethodsOpen(Boolean(expandSecondaryOnOpen));
       // Reset file input
       if (fileInputRef.current) {
@@ -72,7 +75,7 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
       // Clean up camera when dialog closes
       stopQrScanner();
     }
-  }, [isOpen, expandSecondaryOnOpen]);
+  }, [isOpen, expandSecondaryOnOpen, isAndroidApp]);
 
   // Clean up camera on unmount
   useEffect(() => {
@@ -301,8 +304,6 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
   };
 
   const hasExtension = 'nostr' in window;
-  const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
-  const isAndroidApp = isCapacitorAndroid();
   const [amberInstalled, setAmberInstalled] = useState<boolean | null>(null);
 
   useEffect(() => {

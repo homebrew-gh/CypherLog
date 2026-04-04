@@ -11,7 +11,7 @@ import {
   APPLIANCE_KIND, 
   VEHICLE_KIND, 
   MAINTENANCE_KIND, 
-  COMPANY_KIND, 
+  COMPANY_KIND,
   COMPANY_WORK_LOG_KIND,
   SUBSCRIPTION_KIND,
   SUBSCRIPTION_KIND_LEGACY,
@@ -31,9 +31,9 @@ import { logger } from '@/lib/logger';
 
 // Timeout for new users - if no data is found quickly, assume new user
 const NEW_USER_FAST_TIMEOUT_MS = 3000;
-// Remote signers (NostrConnect/Amber) need longer: requests go relay → signer → relay
-const BUNKER_NEW_USER_TIMEOUT_MS = 15000;
-const BUNKER_SYNC_TIMEOUT_MS = 30000;
+// Remote signers (NostrConnect/Amber) need longer: NIP-42 auth is serialized through the signer app
+const BUNKER_NEW_USER_TIMEOUT_MS = 35000;
+const BUNKER_SYNC_TIMEOUT_MS = 60000;
 // If NostrSync hasn't set relay list for this user after this long, run sync anyway (use current config)
 const RELAY_LIST_WAIT_TIMEOUT_MS = 4000;
 
@@ -310,6 +310,7 @@ export function useDataSyncStatus() {
           { kinds: [VEHICLE_KIND], authors: [user.pubkey] },
           { kinds: [MAINTENANCE_KIND], authors: [user.pubkey] },
           { kinds: [COMPANY_KIND], authors: [user.pubkey] },
+          { kinds: [COMPANY_WORK_LOG_KIND], authors: [user.pubkey] },
           { kinds: [SUBSCRIPTION_KIND, SUBSCRIPTION_KIND_LEGACY], authors: [user.pubkey] },
           { kinds: [WARRANTY_KIND], authors: [user.pubkey] },
           { kinds: [MAINTENANCE_COMPLETION_KIND], authors: [user.pubkey] },

@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
-import { isPrivateDataKind } from '@/lib/privateRelayKinds';
+import { isOwnedRelayReadKind } from '@/lib/privateRelayKinds';
 import { logger } from '@/lib/logger';
 import { PublishOutboxManager } from '@/components/PublishOutboxManager';
 import { DEFAULT_PUBLIC_READ_RELAY_URLS } from '@/lib/defaultAppRelays';
@@ -120,7 +120,7 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
           currentUser &&
           f.authors?.length === 1 &&
           f.authors[0] === currentUser &&
-          (!f.kinds?.length || f.kinds.every((k) => isPrivateDataKind(k)));
+          (!f.kinds?.length || f.kinds.every((k) => isOwnedRelayReadKind(k)));
         const includePrivateForReads = privateReadRelays.length > 0 && filters.some(isOwnedDataFilter);
 
         if (includePrivateForReads) {

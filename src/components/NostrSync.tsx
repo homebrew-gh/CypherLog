@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNostr } from '@nostrify/react';
+import { useNostrLogin } from '@nostrify/react/login';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
 import { getCachedEvents, cacheEvents } from '@/lib/eventCache';
@@ -17,9 +18,12 @@ import { logger } from '@/lib/logger';
  */
 export function NostrSync() {
   const { nostr } = useNostr();
+  const { logins } = useNostrLogin();
   const { user } = useCurrentUser();
   const { config, updateConfig } = useAppContext();
   const lastSyncedPubkey = useRef<string | null>(null);
+  const loginsRef = useRef(logins);
+  loginsRef.current = logins;
 
   useEffect(() => {
     if (!user) {
@@ -75,9 +79,12 @@ export function NostrSync() {
 
       // STEP 2: Fetch fresh data from relays in background
       try {
+        const loginType = loginsRef.current[0]?.type;
+        const relayListTimeoutMs =
+          loginType === 'bunker' || loginType === 'x-amber-android' ? 20_000 : 5000;
         const events = await nostr.query(
           [{ kinds: [10002], authors: [pubkey], limit: 1 }],
-          { signal: AbortSignal.timeout(5000) }
+          { signal: AbortSignal.timeout(relayListTimeoutMs) }
         );
 
         if (events.length > 0) {

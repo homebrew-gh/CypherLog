@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useCallback, useState, type ReactNode } from 'react';
 import { SetPrivateRelayUrlsContext } from '@/components/NostrProvider';
 import { useNostr } from '@nostrify/react';
+import { useNostrLogin } from '@nostrify/react/login';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -264,6 +265,7 @@ export const UserPreferencesContext = createContext<UserPreferencesContextType |
 
 export function UserPreferencesProvider({ children }: { children: ReactNode }) {
   const { nostr } = useNostr();
+  const { logins } = useNostrLogin();
   const { user } = useCurrentUser();
   const { mutateAsync: publishEvent } = useNostrPublish();
   const _queryClient = useQueryClient();
@@ -290,8 +292,11 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
   // Fetch preferences from Nostr (background sync)
   // Local storage is used as the primary source for instant loading
   // Include relay updatedAt in query key so we re-fetch when relays change
+  const loginType = logins[0]?.type;
+  const isSlowSignerPath = loginType === 'bunker' || loginType === 'x-amber-android';
+
   const { data: remotePreferences, isLoading: _isLoadingRemote, isFetched } = useQuery({
-    queryKey: ['user-preferences', user?.pubkey, config.relayMetadata.updatedAt],
+    queryKey: ['user-preferences', user?.pubkey, config.relayMetadata.updatedAt, loginType],
     queryFn: async (c) => {
       if (!user?.pubkey) return null;
 
@@ -299,9 +304,9 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
       // This ensures we query the new relays, not the old ones
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Use shorter timeout since we have local storage as fallback
-      // This is a background sync, not blocking UI
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      // Amber / bunker: NIP-42 and relay fan-out need more time than local nsec
+      const timeoutMs = isSlowSignerPath ? 18_000 : 5000;
+      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(timeoutMs)]);
 
       try {
         const events = await nostr.query(

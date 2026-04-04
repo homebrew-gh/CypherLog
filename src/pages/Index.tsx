@@ -298,12 +298,12 @@ const Index = () => {
               </button>
             </div>
 
-            {/* Right - Search, Theme Toggle, House Key Tip & Login */}
+            {/* Right - Search, Theme Toggle (logged-in only), House Key Tip & Login */}
             <div className="flex items-center gap-2">
               {user && !isInitialLoading && (
                 <SearchButton onClick={() => setSearchOpen(true)} />
               )}
-              <ThemeToggle />
+              {user && <ThemeToggle />}
               {!user && !isInitialLoading && (
                 <HouseKeyRecommendation />
               )}

@@ -55,9 +55,9 @@ export function App() {
           <NostrLoginProvider storageKey='nostr:login'>
             <SessionManager />
             <NostrProvider>
-              <NostrSync />
               <NWCProvider>
                 <UserPreferencesProvider>
+                  <NostrSync />
                   <EncryptionProvider>
                     <TooltipProvider>
                       <Toaster />

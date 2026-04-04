@@ -2,6 +2,7 @@ import { useNostr } from '@nostrify/react';
 import { NLogin, type NLoginType, useNostrLogin } from '@nostrify/react/login';
 
 import { AmberSigner, isCapacitorAndroid } from '@/lib/capacitor/amberSignerPlugin';
+import { normalizeSignerPubkey } from '@/lib/normalizeSignerPubkey';
 
 /** NIP-55 default permissions for get_public_key (Amber pre-approval for typical Cypher Log usage). */
 const AMBER_GET_PUBLIC_KEY_PERMISSIONS = JSON.stringify([
@@ -45,9 +46,10 @@ export function useLoginActions() {
           'No NIP-55 signer found. Install Amber (com.greenart7c3.nostrsigner) from F-Droid or GitHub.',
         );
       }
-      const { pubkey, packageName } = await AmberSigner.getPublicKey({
+      const { pubkey: rawPubkey, packageName } = await AmberSigner.getPublicKey({
         permissionsJson: AMBER_GET_PUBLIC_KEY_PERMISSIONS,
       });
+      const pubkey = normalizeSignerPubkey(rawPubkey);
       if (!packageName) {
         throw new Error('Signer did not return a package name. Update Amber and try again.');
       }

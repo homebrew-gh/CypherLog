@@ -6,7 +6,7 @@ import { useCurrentUser } from './useCurrentUser';
 import { useAppContext } from './useAppContext';
 import { useUserPreferences } from '@/contexts/UserPreferencesContext';
 import { isRelayUrlSecure } from '@/lib/relay';
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { 
   APPLIANCE_KIND, 
   VEHICLE_KIND, 
@@ -246,7 +246,11 @@ export function useDataSyncStatus() {
 
   // Main sync query - fetches all data types in one efficient request
   // Only runs after user's relay list (NIP-65) has been loaded, or after timeout fallback
-  const { data: syncStatus, isLoading: isSyncing } = useQuery({
+  const {
+    data: syncStatus,
+    isLoading: syncQueryLoading,
+    isFetching: isRelaySyncQueryFetching,
+  } = useQuery({
     queryKey: [
       'data-sync-status',
       user?.pubkey,
@@ -460,9 +464,18 @@ export function useDataSyncStatus() {
     retry: 1,
   });
 
+  /** Re-run relay fetch and repopulate IndexedDB; resets one-shot invalidation so entity queries refresh if new events arrive. */
+  const refetchFromRelays = useCallback(async () => {
+    if (!user?.pubkey) return;
+    hasInvalidated.current = false;
+    await queryClient.invalidateQueries({ queryKey: ['data-sync-status'] });
+    await queryClient.invalidateQueries({ queryKey: ['author'] });
+    await queryClient.invalidateQueries({ queryKey: ['nostr'] });
+  }, [queryClient, user?.pubkey]);
+
   return {
     // Syncing if query is loading OR query hasn't even started yet (waiting for cache check)
-    isSyncing: isSyncing || (!syncStatus?.synced && !cacheChecked),
+    isSyncing: syncQueryLoading || (!syncStatus?.synced && !cacheChecked),
     isSynced: syncStatus?.synced ?? false,
     hasAnyData: syncStatus?.hasAnyData ?? false,
     // These are available immediately after cache check (before relay sync)
@@ -486,6 +499,8 @@ export function useDataSyncStatus() {
       properties: { synced: false, count: 0 },
       vetVisits: { synced: false, count: 0 },
     },
+    refetchFromRelays,
+    isFetchingRelayData: isRelaySyncQueryFetching,
   };
 }
 

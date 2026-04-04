@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { RelayListManager } from '@/components/RelayListManager';
 import { BlossomServerManager } from '@/components/BlossomServerManager';
 import { usePrivateRelayBackfill } from '@/hooks/usePrivateRelayBackfill';
+import { useDataSyncStatus } from '@/hooks/useDataSyncStatus';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
@@ -30,6 +32,9 @@ export function RelayManagementDialog({ isOpen, onClose, defaultTab = 'relays' }
     isRunning,
     error,
   } = usePrivateRelayBackfill();
+
+  const { user } = useCurrentUser();
+  const { refetchFromRelays, isFetchingRelayData } = useDataSyncStatus();
 
   const handleSyncToPrivate = () => {
     // Sync last 90 days to private relay(s) so all events are on all relays
@@ -145,6 +150,32 @@ export function RelayManagementDialog({ isOpen, onClose, defaultTab = 'relays' }
                 </div>
               </CollapsibleContent>
             </Collapsible>
+
+            {user && (
+              <Alert>
+                <RefreshCw
+                  className={`h-4 w-4 ${isFetchingRelayData ? 'animate-spin' : ''}`}
+                  aria-hidden
+                />
+                <AlertDescription>
+                  <div className="space-y-2">
+                    <p className="text-sm">
+                      <strong>Sync from relays</strong> loads your Cypher Log events from your relays into this device.
+                      Use this if the app finished loading but data did not appear (slow network or first connection).
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void refetchFromRelays()}
+                      disabled={isFetchingRelayData}
+                    >
+                      {isFetchingRelayData ? 'Syncing…' : 'Sync from relays'}
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Private relay backfill: sync data to private relay(s) */}
             {eligible && (

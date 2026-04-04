@@ -13,6 +13,7 @@ import { useLoginActions } from '@/hooks/useLoginActions';
 import { DialogTitle } from '@radix-ui/react-dialog';
 import { NostrConnectLogin, type NostrConnectResult } from './NostrConnectLogin';
 import { logger } from '@/lib/logger';
+import { AmberSigner, isCapacitorAndroid } from '@/lib/capacitor/amberSignerPlugin';
 
 interface LoginDialogProps {
   isOpen: boolean;
@@ -39,6 +40,7 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
     file?: string;
     extension?: string;
     qr?: string;
+    amber?: string;
   }>({});
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('bunker');
@@ -296,6 +298,42 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
 
   const hasExtension = 'nostr' in window;
   const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
+  const isAndroidApp = isCapacitorAndroid();
+  const [amberInstalled, setAmberInstalled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !isAndroidApp) {
+      setAmberInstalled(null);
+      return;
+    }
+    let cancelled = false;
+    AmberSigner.isAvailable()
+      .then((r) => {
+        if (!cancelled) setAmberInstalled(r.installed);
+      })
+      .catch(() => {
+        if (!cancelled) setAmberInstalled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isAndroidApp]);
+
+  const handleAmberLogin = async () => {
+    setIsLoading(true);
+    setErrors((prev) => ({ ...prev, amber: undefined }));
+    try {
+      await login.amberAndroid();
+      onLogin();
+      onClose();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Amber login failed';
+      logger.error('[LoginDialog] Amber login failed:', e);
+      setErrors((prev) => ({ ...prev, amber: message }));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const renderBunkerTab = () => (
     <div className="space-y-4">
@@ -533,6 +571,53 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
         </div>
 
         <div className='px-6 pb-6 space-y-4 overflow-y-auto'>
+          {isAndroidApp && (
+            <div className="space-y-2">
+              {errors.amber && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{errors.amber}</AlertDescription>
+                </Alert>
+              )}
+              <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 space-y-2">
+                <p className="text-xs text-amber-900 dark:text-amber-200">
+                  Opens <strong>Amber</strong> (or another NIP-55 signer) to approve your public key. Each sign and
+                  NIP-44 encrypt/decrypt may prompt Amber again unless you use &quot;remember&quot; in Amber.
+                </p>
+                <Button
+                  className="w-full h-11"
+                  onClick={handleAmberLogin}
+                  disabled={isLoading || amberInstalled === false}
+                >
+                  {isLoading ? 'Opening Amber…' : 'Log in with Amber'}
+                </Button>
+                {amberInstalled === false && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Install{' '}
+                    <a
+                      href="https://f-droid.org/packages/com.greenart7c3.nostrsigner/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      Amber on F-Droid
+                    </a>{' '}
+                    or{' '}
+                    <a
+                      href="https://github.com/greenart7c3/Amber/releases"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      GitHub
+                    </a>
+                    .
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Extension Login - shown if extension is available */}
           {hasExtension && (
             <div className="space-y-3">

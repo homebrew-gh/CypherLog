@@ -1,6 +1,8 @@
 import { useNostr } from '@nostrify/react';
 import { NLogin, type NLoginType, useNostrLogin } from '@nostrify/react/login';
 
+import { AmberSigner, isCapacitorAndroid } from '@/lib/capacitor/amberSignerPlugin';
+
 // NOTE: This file should not be edited except for adding new login methods.
 
 export function useLoginActions() {
@@ -21,6 +23,30 @@ export function useLoginActions() {
     // Login with a NIP-07 browser extension
     async extension(): Promise<void> {
       const login = await NLogin.fromExtension();
+      addLogin(login);
+    },
+    /** Android app only: NIP-55 signer (e.g. Amber). */
+    async amberAndroid(): Promise<void> {
+      if (!isCapacitorAndroid()) {
+        throw new Error('Amber login is only available in the Cypher Log Android app.');
+      }
+      const avail = await AmberSigner.isAvailable();
+      if (!avail.installed) {
+        throw new Error(
+          'No NIP-55 signer found. Install Amber (com.greenart7c3.nostrsigner) from F-Droid or GitHub.',
+        );
+      }
+      const { pubkey, packageName } = await AmberSigner.getPublicKey({ permissionsJson: '[]' });
+      if (!packageName) {
+        throw new Error('Signer did not return a package name. Update Amber and try again.');
+      }
+      const login: NLoginType = {
+        id: `x-amber-android:${pubkey}`,
+        type: 'x-amber-android',
+        pubkey,
+        createdAt: new Date().toISOString(),
+        data: { signerPackage: packageName },
+      };
       addLogin(login);
     },
     // Login with NIP-46 NostrConnect (client-initiated connection).

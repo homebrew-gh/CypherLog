@@ -83,7 +83,9 @@ export function useDataSyncStatus() {
   const { user } = useCurrentUser();
   const { config } = useAppContext();
   const queryClient = useQueryClient();
-  const isBunker = logins[0]?.type === 'bunker';
+  const loginType = logins[0]?.type;
+  /** Bunker (NIP-46) and Amber (NIP-55 intents) need longer sync timeouts than local signers. */
+  const isSlowSignerPath = loginType === 'bunker' || loginType === 'x-amber-android';
   const hasInvalidated = useRef(false);
   const relayListReady = config.relayListSyncedForPubkey === user?.pubkey;
   const [relayListWaitTimedOut, setRelayListWaitTimedOut] = useState(false);
@@ -190,7 +192,7 @@ export function useDataSyncStatus() {
   // Main sync query - fetches all data types in one efficient request
   // Only runs after user's relay list (NIP-65) has been loaded, or after timeout fallback
   const { data: syncStatus, isLoading: isSyncing } = useQuery({
-    queryKey: ['data-sync-status', user?.pubkey, config.relayMetadata.updatedAt, isBunker, canRunSync],
+    queryKey: ['data-sync-status', user?.pubkey, config.relayMetadata.updatedAt, isSlowSignerPath, canRunSync],
     queryFn: async ({ signal }) => {
       if (!user?.pubkey) {
         return { 
@@ -224,7 +226,7 @@ export function useDataSyncStatus() {
 
       // Use a shorter timeout for new users (no cache) to avoid long waits when there's nothing to fetch.
       // Remote signers (NostrConnect/Amber) need longer: relay round-trips are slower.
-      const timeoutMs = isBunker
+      const timeoutMs = isSlowSignerPath
         ? (hasAnyCachedData ? BUNKER_SYNC_TIMEOUT_MS : BUNKER_NEW_USER_TIMEOUT_MS)
         : (hasAnyCachedData ? 20000 : NEW_USER_FAST_TIMEOUT_MS);
 

@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Car, Gauge, Wrench, Plus, X, Package, Building2, Receipt, ImagePlus } from 'lucide-react';
+import { Car, Gauge, Wrench, Plus, X, Package, Building2, Receipt, ImagePlus, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DateInput } from '@/components/ui/date-input';
 import { useVehicles, useVehicleActions } from '@/hooks/useVehicles';
@@ -271,6 +272,70 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
             />
           </div>
 
+          {/* Receipt (private Blossom) — placed early so it is visible on small screens (e.g. Android) */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Receipt className="h-4 w-4" />
+              Add receipt (optional)
+            </Label>
+            {!canUploadReceipt ? (
+              <Alert className="border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/40">
+                <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                <AlertTitle className="text-sm text-sky-950 dark:text-sky-100">Receipt photo</AlertTitle>
+                <AlertDescription className="text-xs text-sky-900/90 dark:text-sky-200/90 space-y-2">
+                  <p>
+                    This app only uploads receipts to a Blossom server you mark as <strong>private</strong>. Until you
+                    add one, you will not see a photo picker here—that is expected.
+                  </p>
+                  <p>
+                    <strong>Where to set it up:</strong> open the menu (☰) → <strong>Nostr Relays</strong> →{' '}
+                    <strong>Configure</strong> → <strong>Media</strong> tab → add a Blossom URL and turn on{' '}
+                    <strong>Private</strong>.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  ref={receiptInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    setReceiptFile(file ?? null);
+                    e.target.value = '';
+                  }}
+                />
+                {receiptFile ? (
+                  <div className="flex items-center gap-2 flex-wrap rounded-md border p-2 bg-muted/30">
+                    <span className="text-sm truncate flex-1 min-w-0">{receiptFile.name}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => setReceiptFile(null)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full sm:w-auto"
+                    onClick={() => receiptInputRef.current?.click()}
+                  >
+                    <ImagePlus className="h-4 w-4 mr-2" />
+                    Choose receipt image
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Service Provider / Company */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
@@ -397,59 +462,6 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
                 <Plus className="h-4 w-4 mr-2" />
                 Add Part
               </Button>
-            )}
-          </div>
-
-          {/* Receipt (private Blossom) */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Receipt className="h-4 w-4" />
-              Add receipt (optional)
-            </Label>
-            {!canUploadReceipt ? (
-              <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3 bg-muted/30">
-                Configure a private media server in Settings → Server Settings → Media to attach receipt photos.
-                Receipts are uploaded only to your private Blossom server.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                <input
-                  ref={receiptInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    setReceiptFile(file ?? null);
-                    e.target.value = '';
-                  }}
-                />
-                {receiptFile ? (
-                  <div className="flex items-center gap-2 flex-wrap rounded-md border p-2 bg-muted/30">
-                    <span className="text-sm truncate flex-1 min-w-0">{receiptFile.name}</span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="shrink-0"
-                      onClick={() => setReceiptFile(null)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="w-full sm:w-auto"
-                    onClick={() => receiptInputRef.current?.click()}
-                  >
-                    <ImagePlus className="h-4 w-4 mr-2" />
-                    Choose receipt image
-                  </Button>
-                )}
-              </div>
             )}
           </div>
 

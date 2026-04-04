@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 import { NSecSigner, NRelay1 } from '@nostrify/nostrify';
+import type { NostrEvent } from '@nostrify/types';
 import QRCode from 'qrcode';
 import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, Copy, Check, QrCode, ExternalLink } from 'lucide-react';
 import { useAppContext } from '@/hooks/useAppContext';
+import { isCapacitorAndroid } from '@/lib/capacitor/amberSignerPlugin';
 import { logger } from '@/lib/logger';
 
 export interface NostrConnectResult {
@@ -29,13 +31,123 @@ interface NostrConnectLoginProps {
   appUrl?: string;
 }
 
+const PENDING_STORAGE_KEY = 'cypherlog_nostrconnect_pending_v1';
+const PENDING_TTL_MS = 15 * 60 * 1000;
+const CONNECT_WAIT_MS = 120_000;
+
+interface PendingSessionV1 {
+  v: 1;
+  clientNsec: string;
+  secret: string;
+  relayUrl: string;
+  connectUri: string;
+  sessionStartedAt: number;
+}
+
+function readPendingSession(): PendingSessionV1 | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingSessionV1;
+    if (parsed.v !== 1 || !parsed.clientNsec || !parsed.connectUri || !parsed.relayUrl) return null;
+    if (Date.now() - parsed.sessionStartedAt > PENDING_TTL_MS) {
+      sessionStorage.removeItem(PENDING_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingSession(session: PendingSessionV1): void {
+  try {
+    sessionStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    // private mode / quota
+  }
+}
+
+function clearPendingSession(): void {
+  try {
+    sessionStorage.removeItem(PENDING_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function decodeNsecToSecretKey(nsec: string): Uint8Array {
+  const decoded = nip19.decode(nsec);
+  if (decoded.type !== 'nsec') {
+    throw new Error('Invalid nsec in pending session');
+  }
+  return decoded.data;
+}
+
+async function tryProcessConnectResponse(
+  event: NostrEvent,
+  clientSigner: NSecSigner,
+  clientSecretKey: Uint8Array,
+  relayUrl: string,
+): Promise<NostrConnectResult | null> {
+  let decrypted: string;
+  try {
+    decrypted = await clientSigner.nip44!.decrypt(event.pubkey, event.content);
+  } catch {
+    try {
+      decrypted = await clientSigner.nip04!.decrypt(event.pubkey, event.content);
+    } catch {
+      return null;
+    }
+  }
+
+  let response: { error?: string; result?: unknown };
+  try {
+    response = JSON.parse(decrypted) as { error?: string; result?: unknown };
+  } catch {
+    return null;
+  }
+
+  if (response.error) {
+    return null;
+  }
+
+  if (!response.result) {
+    return null;
+  }
+
+  const remotePubkey = event.pubkey;
+  const resultStr = typeof response.result === 'string' ? response.result : '';
+  const resultIsHexPubkey = /^[0-9a-f]{64}$/i.test(resultStr);
+  const userPubkey = resultIsHexPubkey ? resultStr : remotePubkey;
+
+  return {
+    remotePubkey,
+    userPubkey,
+    clientNsec: nip19.nsecEncode(clientSecretKey),
+    relayUrl,
+  };
+}
+
 export function NostrConnectLogin({
   onConnect,
   onError,
   appName = 'CypherLog',
-  appUrl = window.location.origin,
+  appUrl = typeof window !== 'undefined' ? window.location.origin : '',
 }: NostrConnectLoginProps) {
   const { config } = useAppContext();
+  const onConnectRef = useRef(onConnect);
+  const onErrorRef = useRef(onError);
+  const appNameRef = useRef(appName);
+  const appUrlRef = useRef(appUrl);
+  const configRef = useRef(config);
+
+  onConnectRef.current = onConnect;
+  onErrorRef.current = onError;
+  appNameRef.current = appName;
+  appUrlRef.current = appUrl;
+  configRef.current = config;
+
   const [connectUri, setConnectUri] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -43,205 +155,292 @@ export function NostrConnectLogin({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string>('');
 
-  // Use refs to track connection state and allow cleanup
   const connectionRef = useRef<{
     clientSecretKey: Uint8Array;
     secret: string;
     relay: NRelay1;
+    relayUrl: string;
+    sessionStartedAt: number;
     aborted: boolean;
   } | null>(null);
 
-  // Get first write relay for NostrConnect communication
-  const getConnectRelay = useCallback(() => {
-    const writeRelay = config.relayMetadata.relays.find(r => r.write);
-    return writeRelay?.url ?? 'wss://relay.damus.io';
-  }, [config.relayMetadata.relays]);
+  const completedRef = useRef(false);
+  const isAndroidApp = isCapacitorAndroid();
 
-  // Generate a random secret for the connection
-  // NIP-46 example shows short alphanumeric secrets like "0s8j2djs"
+  const getConnectRelay = useCallback(() => {
+    const writeRelay = configRef.current.relayMetadata.relays.find((r) => r.write);
+    return writeRelay?.url ?? 'wss://relay.damus.io';
+  }, []);
+
   const generateSecret = () => {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     const bytes = new Uint8Array(8);
     crypto.getRandomValues(bytes);
-    return Array.from(bytes).map(b => chars[b % chars.length]).join('');
+    return Array.from(bytes, (b) => chars[b % chars.length]).join('');
   };
 
-  // Generate the nostrconnect:// URI and QR code
+  const finishConnect = useCallback((result: NostrConnectResult) => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+
+    const ref = connectionRef.current;
+    if (ref) {
+      ref.aborted = true;
+      try {
+        ref.relay.close();
+      } catch {
+        // ignore
+      }
+    }
+    connectionRef.current = null;
+
+    clearPendingSession();
+    setIsConnecting(false);
+    setError('');
+    onConnectRef.current(result);
+  }, []);
+
+  const queryPastConnectResponses = useCallback(
+    async (
+      relay: NRelay1,
+      clientSecretKey: Uint8Array,
+      clientPubkey: string,
+      relayUrl: string,
+      sessionStartedAt: number,
+    ): Promise<NostrConnectResult | null> => {
+      const clientSigner = new NSecSigner(clientSecretKey);
+      const since = Math.max(0, Math.floor(sessionStartedAt / 1000) - 300);
+
+      let past: NostrEvent[];
+      try {
+        past = await relay.query([{ kinds: [24133], '#p': [clientPubkey], since, limit: 50 }], {
+          signal: AbortSignal.timeout(15_000),
+        });
+      } catch {
+        return null;
+      }
+
+      const sorted = [...past].sort((a, b) => b.created_at - a.created_at);
+      for (const event of sorted) {
+        if (event.created_at < since) continue;
+        const parsed = await tryProcessConnectResponse(event, clientSigner, clientSecretKey, relayUrl);
+        if (parsed) return parsed;
+      }
+      return null;
+    },
+    [],
+  );
+
+  const waitForConnection = useCallback(
+    async (
+      relay: NRelay1,
+      clientSecretKey: Uint8Array,
+      clientPubkey: string,
+      relayUrl: string,
+      sessionStartedAt: number,
+    ) => {
+      const clientSigner = new NSecSigner(clientSecretKey);
+
+      try {
+        const fromPast = await queryPastConnectResponses(
+          relay,
+          clientSecretKey,
+          clientPubkey,
+          relayUrl,
+          sessionStartedAt,
+        );
+        if (completedRef.current) return;
+        if (fromPast) {
+          finishConnect(fromPast);
+          return;
+        }
+
+        if (connectionRef.current?.aborted) return;
+
+        const timeout = AbortSignal.timeout(CONNECT_WAIT_MS);
+        const sub = relay.req([{ kinds: [24133], '#p': [clientPubkey], limit: 1 }], { signal: timeout });
+
+        for await (const msg of sub) {
+          if (connectionRef.current?.aborted || completedRef.current) {
+            break;
+          }
+
+          if (msg[0] === 'EVENT') {
+            const event = msg[2];
+            const parsed = await tryProcessConnectResponse(event, clientSigner, clientSecretKey, relayUrl);
+            if (parsed) {
+              finishConnect(parsed);
+              return;
+            }
+          }
+        }
+
+        if (!completedRef.current && !connectionRef.current?.aborted) {
+          const err = new Error(
+            'No response from your signer yet. Return to this screen after approving in Amber, or tap refresh if you waited more than a few minutes.',
+          );
+          setError(err.message);
+          setIsConnecting(false);
+          onErrorRef.current?.(err);
+        }
+      } catch (err) {
+        if (connectionRef.current?.aborted || completedRef.current) {
+          return;
+        }
+        logger.error('[NostrConnectLogin] Connection error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Connection failed';
+        setError(errorMessage);
+        setIsConnecting(false);
+        onErrorRef.current?.(err instanceof Error ? err : new Error(errorMessage));
+      }
+    },
+    [finishConnect, queryPastConnectResponses],
+  );
+
+  const recoverAfterForeground = useCallback(async () => {
+    const ref = connectionRef.current;
+    if (!ref || ref.aborted || completedRef.current || !isConnecting) return;
+
+    const clientPubkey = getPublicKey(ref.clientSecretKey);
+    const probe = new NRelay1(ref.relayUrl);
+
+    try {
+      const found = await queryPastConnectResponses(
+        probe,
+        ref.clientSecretKey,
+        clientPubkey,
+        ref.relayUrl,
+        ref.sessionStartedAt,
+      );
+      if (found && !completedRef.current) {
+        ref.aborted = true;
+        try {
+          ref.relay.close();
+        } catch {
+          // ignore
+        }
+        finishConnect(found);
+      }
+    } catch {
+      // ignore — main subscription may still deliver
+    } finally {
+      try {
+        await probe.close();
+      } catch {
+        // ignore
+      }
+    }
+  }, [finishConnect, isConnecting, queryPastConnectResponses]);
+
   const generateConnection = useCallback(async () => {
     setIsGenerating(true);
     setError('');
     setConnectUri('');
     setQrDataUrl('');
+    completedRef.current = false;
 
-    // Clean up any existing connection
     if (connectionRef.current) {
       connectionRef.current.aborted = true;
       try {
-        connectionRef.current.relay.close();
+        await connectionRef.current.relay.close();
       } catch {
-        // Ignore close errors
+        // ignore
       }
+      connectionRef.current = null;
+    }
+
+    const now = Date.now();
+    const existing = readPendingSession();
+
+    try {
+      if (existing && now - existing.sessionStartedAt < PENDING_TTL_MS) {
+        const clientSecretKey = decodeNsecToSecretKey(existing.clientNsec);
+        const clientPubkey = getPublicKey(clientSecretKey);
+
+        setConnectUri(existing.connectUri);
+        const qrUrl = await QRCode.toDataURL(existing.connectUri, {
+          width: 280,
+          margin: 2,
+          color: { dark: '#000000', light: '#ffffff' },
+        });
+        setQrDataUrl(qrUrl);
+
+        const relay = new NRelay1(existing.relayUrl);
+        connectionRef.current = {
+          clientSecretKey,
+          secret: existing.secret,
+          relay,
+          relayUrl: existing.relayUrl,
+          sessionStartedAt: existing.sessionStartedAt,
+          aborted: false,
+        };
+
+        setIsGenerating(false);
+        setIsConnecting(true);
+
+        await waitForConnection(relay, clientSecretKey, clientPubkey, existing.relayUrl, existing.sessionStartedAt);
+        return;
+      }
+    } catch {
+      clearPendingSession();
     }
 
     try {
-      // Generate a new client keypair
       const clientSecretKey = generateSecretKey();
       const clientPubkey = getPublicKey(clientSecretKey);
       const secret = generateSecret();
       const relayUrl = getConnectRelay();
+      const sessionStartedAt = Date.now();
 
-      // Build the nostrconnect:// URI according to NIP-46
       const params = new URLSearchParams();
       params.set('relay', relayUrl);
       params.set('secret', secret);
-      params.set('name', appName);
-      params.set('url', appUrl);
-      // Request common permissions
+      params.set('name', appNameRef.current);
+      params.set('url', appUrlRef.current);
       params.set('perms', 'sign_event,nip04_encrypt,nip04_decrypt,nip44_encrypt,nip44_decrypt');
 
       const uri = `nostrconnect://${clientPubkey}?${params.toString()}`;
-      // SECURITY: Do not log URI, secret, or relayUrl - they could enable session hijacking
       setConnectUri(uri);
 
-      // Generate QR code
       const qrUrl = await QRCode.toDataURL(uri, {
         width: 280,
         margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#ffffff',
-        },
+        color: { dark: '#000000', light: '#ffffff' },
       });
       setQrDataUrl(qrUrl);
 
-      // Open relay connection and start listening
-      const relay = new NRelay1(relayUrl);
+      writePendingSession({
+        v: 1,
+        clientNsec: nip19.nsecEncode(clientSecretKey),
+        secret,
+        relayUrl,
+        connectUri: uri,
+        sessionStartedAt,
+      });
 
+      const relay = new NRelay1(relayUrl);
       connectionRef.current = {
         clientSecretKey,
         secret,
         relay,
+        relayUrl,
+        sessionStartedAt,
         aborted: false,
       };
 
       setIsGenerating(false);
       setIsConnecting(true);
 
-      // Listen for the connect response
-      await waitForConnection(relay, clientSecretKey, clientPubkey, secret, relayUrl);
+      await waitForConnection(relay, clientSecretKey, clientPubkey, relayUrl, sessionStartedAt);
     } catch (err) {
       logger.error('[NostrConnectLogin] Error generating connection:', err);
       setError(err instanceof Error ? err.message : 'Failed to generate connection');
       setIsGenerating(false);
       setIsConnecting(false);
-      onError?.(err instanceof Error ? err : new Error('Failed to generate connection'));
+      onErrorRef.current?.(err instanceof Error ? err : new Error('Failed to generate connection'));
     }
-  }, [appName, appUrl, getConnectRelay, onError]);
+  }, [getConnectRelay, waitForConnection]);
 
-  // Wait for the signer to respond to our nostrconnect:// request
-  const waitForConnection = async (
-    relay: NRelay1,
-    clientSecretKey: Uint8Array,
-    clientPubkey: string,
-    secret: string,
-    relayUrl: string
-  ) => {
-    try {
-      const clientSigner = new NSecSigner(clientSecretKey);
-
-      // Create a timeout for the connection (2 minutes)
-      const timeout = AbortSignal.timeout(120000);
-
-      // Subscribe to kind 24133 events addressed to us
-      const sub = relay.req(
-        [{ kinds: [24133], '#p': [clientPubkey], limit: 1 }],
-        { signal: timeout }
-      );
-
-      for await (const msg of sub) {
-        if (connectionRef.current?.aborted) {
-          break;
-        }
-
-        if (msg[0] === 'EVENT') {
-          const event = msg[2];
-          logger.log('[NostrConnectLogin] Received event from signer');
-
-          // Decrypt the response using NIP-44 or NIP-04
-          let decrypted: string;
-          try {
-            // Try NIP-44 first
-            decrypted = await clientSigner.nip44!.decrypt(event.pubkey, event.content);
-            logger.log('[NostrConnectLogin] Decrypted with NIP-44');
-          } catch {
-            logger.log('[NostrConnectLogin] NIP-44 decrypt failed, trying NIP-04');
-            // Fall back to NIP-04
-            try {
-              decrypted = await clientSigner.nip04!.decrypt(event.pubkey, event.content);
-              logger.log('[NostrConnectLogin] Decrypted with NIP-04');
-            } catch {
-              logger.warn('[NostrConnectLogin] Failed to decrypt response with both NIP-44 and NIP-04');
-              continue;
-            }
-          }
-
-          const response = JSON.parse(decrypted);
-          // SECURITY: Do not log response or secret
-
-          // Check for errors first
-          if (response.error) {
-            logger.error('[NostrConnectLogin] Signer returned error:', response.error);
-            throw new Error(response.error);
-          }
-
-          // Check if this is a successful connect response
-          // Different signers respond differently:
-          // - Some return the secret we sent
-          // - Some return "ack"
-          // - Some return the user's pubkey
-          // - Some just return a truthy result
-          if (response.result) {
-            // The remote signer's pubkey is the event author
-            const remotePubkey = event.pubkey;
-
-            // If the result looks like a pubkey (64 hex chars), use it as the user pubkey
-            // Otherwise assume user pubkey = remote pubkey
-            const resultIsHexPubkey = typeof response.result === 'string' &&
-                                       /^[0-9a-f]{64}$/i.test(response.result);
-            const userPubkey = resultIsHexPubkey ? response.result : remotePubkey;
-
-            logger.log('[NostrConnectLogin] Connection successful');
-
-            // Convert client secret key to nsec for storage
-            const clientNsec = nip19.nsecEncode(clientSecretKey);
-
-            setIsConnecting(false);
-            
-            // Return the connection result
-            onConnect({
-              remotePubkey,
-              userPubkey,
-              clientNsec,
-              relayUrl,
-            });
-            return;
-          }
-        }
-      }
-    } catch (err) {
-      if (connectionRef.current?.aborted) {
-        return;
-      }
-
-      logger.error('[NostrConnectLogin] Connection error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Connection failed';
-      setError(errorMessage);
-      setIsConnecting(false);
-      onError?.(err instanceof Error ? err : new Error(errorMessage));
-    }
-  };
-
-  // Copy URI to clipboard
   const copyToClipboard = async () => {
     if (!connectUri) return;
     try {
@@ -253,39 +452,73 @@ export function NostrConnectLogin({
     }
   };
 
-  // Generate connection on mount
   useEffect(() => {
-    generateConnection();
+    void generateConnection();
 
     return () => {
-      // Cleanup on unmount
       if (connectionRef.current) {
         connectionRef.current.aborted = true;
         try {
-          connectionRef.current.relay.close();
+          void connectionRef.current.relay.close();
         } catch {
-          // Ignore close errors
+          // ignore
         }
       }
     };
-  }, []);
+  }, [generateConnection]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void recoverAfterForeground();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [recoverAfterForeground]);
 
   return (
     <div className="space-y-4">
-      {/* Info about NostrConnect – alert style so users don't expect it to work reliably */}
       <div className="p-3 rounded-lg space-y-2 border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40">
         <p className="text-xs text-amber-900 dark:text-amber-200">
-          Scan this QR code with your Nostr signer app (like <a href="https://nsec.app" target="_blank" rel="noopener noreferrer" className="text-amber-700 dark:text-amber-300 hover:underline font-medium">nsec.app</a>, <a href="https://github.com/greenart7c3/Amber" target="_blank" rel="noopener noreferrer" className="text-amber-700 dark:text-amber-300 hover:underline font-medium">Amber</a>, or another NIP-46 compatible signer).
+          Scan this QR code with your Nostr signer app (like{' '}
+          <a
+            href="https://nsec.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-amber-700 dark:text-amber-300 hover:underline font-medium"
+          >
+            nsec.app
+          </a>
+          ,{' '}
+          <a
+            href="https://github.com/greenart7c3/Amber"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-amber-700 dark:text-amber-300 hover:underline font-medium"
+          >
+            Amber
+          </a>
+          , or another NIP-46 compatible signer).
         </p>
         <p className="text-xs text-amber-900 dark:text-amber-200">
-          Both devices talk through Nostr relays (not directly). Keep your signer app open and connected to the same relay for the first load; profile and data may take a bit longer than with a local key.
+          Both devices talk through Nostr relays (not directly). Keep your signer app open and connected to the same
+          relay for the first load; profile and data may take a bit longer than with a local key.
         </p>
+        {isAndroidApp && (
+          <p className="text-xs font-medium text-amber-950 dark:text-amber-100">
+            <strong>Android:</strong> After you approve the connection in Amber, use the system back button to return
+            here. The same QR pairing stays active for several minutes—avoid tapping refresh unless you need a new
+            session. For signing without relay handshakes, use &quot;Log in with Amber&quot; at the top of this screen.
+          </p>
+        )}
         <p className="text-xs text-amber-900 dark:text-amber-200">
-          Because Cypher Log stores your data encrypted, remote signers (e.g. Amber) can have trouble loading your profile and data—timeouts and failed loads are common. For the most reliable experience, use a local key (nsec) or a browser extension.
+          Because Cypher Log stores your data encrypted, remote signers (e.g. Amber) can have trouble loading your
+          profile and data—timeouts and failed loads are common. For the most reliable experience, use a local key
+          (nsec) or a browser extension.
         </p>
       </div>
 
-      {/* QR Code Display */}
       <div className="flex flex-col items-center space-y-4">
         {isGenerating ? (
           <div className="w-[280px] h-[280px] flex items-center justify-center bg-muted rounded-lg">
@@ -315,12 +548,8 @@ export function NostrConnectLogin({
           </div>
         )}
 
-        {/* Error message */}
-        {error && (
-          <p className="text-sm text-destructive text-center">{error}</p>
-        )}
+        {error && <p className="text-sm text-destructive text-center">{error}</p>}
 
-        {/* Action buttons */}
         <div className="flex gap-2 w-full">
           <Button
             variant="outline"
@@ -344,7 +573,10 @@ export function NostrConnectLogin({
           <Button
             variant="outline"
             size="sm"
-            onClick={generateConnection}
+            onClick={() => {
+              clearPendingSession();
+              void generateConnection();
+            }}
             disabled={isGenerating}
           >
             <RefreshCw className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
@@ -352,7 +584,6 @@ export function NostrConnectLogin({
         </div>
       </div>
 
-      {/* Link to learn more */}
       <a
         href="https://nostrconnect.org"
         target="_blank"

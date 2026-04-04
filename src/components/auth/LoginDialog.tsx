@@ -19,6 +19,8 @@ interface LoginDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onLogin: () => void;
+  /** When true (e.g. opened from "Other sign-in options" on Android), expand secondary methods immediately. */
+  expandSecondaryOnOpen?: boolean;
 }
 
 const validateNsec = (nsec: string) => {
@@ -29,7 +31,7 @@ const validateBunkerUri = (uri: string) => {
   return uri.startsWith('bunker://');
 };
 
-const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) => {
+const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, expandSecondaryOnOpen = false }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isFileLoading, setIsFileLoading] = useState(false);
   const [nsec, setNsec] = useState('');
@@ -44,6 +46,7 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
   }>({});
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('bunker');
+  const [androidOtherMethodsOpen, setAndroidOtherMethodsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -59,7 +62,8 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
       setBunkerUri('');
       setErrors({});
       setShowQrScanner(false);
-      setActiveTab('bunker');
+      setActiveTab(isCapacitorAndroid() ? 'key' : 'bunker');
+      setAndroidOtherMethodsOpen(Boolean(expandSecondaryOnOpen));
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -68,7 +72,7 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
       // Clean up camera when dialog closes
       stopQrScanner();
     }
-  }, [isOpen]);
+  }, [isOpen, expandSecondaryOnOpen]);
 
   // Clean up camera on unmount
   useEffect(() => {
@@ -564,11 +568,18 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
           <DialogTitle className="text-lg font-semibold leading-none tracking-tight text-center">
             Log in
           </DialogTitle>
+          {isAndroidApp && (
+            <p className="text-center text-xs text-muted-foreground pt-2 px-2">
+              On Android, signing in with Amber (NIP-55) is the supported flow—no QR or bunker URI required.
+            </p>
+          )}
         </DialogHeader>
 
-        <div className="flex size-32 text-6xl bg-primary/10 rounded-full items-center justify-center justify-self-center">
-          <Shield className="h-14 w-14 text-primary" />
-        </div>
+        {!isAndroidApp && (
+          <div className="flex size-32 text-6xl bg-primary/10 rounded-full items-center justify-center justify-self-center">
+            <Shield className="h-14 w-14 text-primary" />
+          </div>
+        )}
 
         <div className='px-6 pb-6 space-y-4 overflow-y-auto'>
           {isAndroidApp && (
@@ -581,8 +592,8 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
               )}
               <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 space-y-2">
                 <p className="text-xs text-amber-900 dark:text-amber-200">
-                  Opens <strong>Amber</strong> (or another NIP-55 signer) to approve your public key. Each sign and
-                  NIP-44 encrypt/decrypt may prompt Amber again unless you use &quot;remember&quot; in Amber.
+                  Opens <strong>Amber</strong> (or another NIP-55 signer). Approve the connection once; you can grant
+                  signing and NIP-44 permissions in Amber so you are not prompted for every action.
                 </p>
                 <Button
                   className="w-full h-11"
@@ -637,8 +648,27 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
             </div>
           )}
 
-          {/* Tabs - wrapped in collapsible if extension is available, otherwise shown directly */}
-          {hasExtension ? (
+          {/* Android: tuck bunker / Nostr Connect / nsec under one collapsible */}
+          {isAndroidApp ? (
+            <Collapsible
+              className="space-y-4"
+              open={androidOtherMethodsOpen}
+              onOpenChange={setAndroidOtherMethodsOpen}
+            >
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors py-2 rounded-lg border border-dashed border-border"
+                >
+                  <span>Other sign-in options</span>
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform ${androidOtherMethodsOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2">{renderTabs()}</CollapsibleContent>
+            </Collapsible>
+          ) : hasExtension ? (
             <Collapsible className="space-y-4" open={isMoreOptionsOpen} onOpenChange={setIsMoreOptionsOpen}>
               <CollapsibleTrigger asChild>
                 <button className="w-full flex items-center justify-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">

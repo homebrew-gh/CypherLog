@@ -55,7 +55,7 @@ export function LoginArea({ className }: LoginAreaProps) {
     setAmberErr(null);
   };
 
-  const openOtherSignIn = () => {
+  const openSecretKeyLogin = () => {
     setExpandSecondaryLogin(true);
     setLoginDialogOpen(true);
   };
@@ -98,8 +98,8 @@ export function LoginArea({ className }: LoginAreaProps) {
             <span className="truncate">{amberBusy ? 'Opening Amber…' : 'Log in with Amber'}</span>
           </Button>
           <div className="flex gap-2 justify-center flex-wrap">
-            <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={openOtherSignIn}>
-              Other sign-in options
+            <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={openSecretKeyLogin}>
+              Log in with secret key
             </Button>
             <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => setSignupDialogOpen(true)}>
               Sign up
@@ -107,7 +107,7 @@ export function LoginArea({ className }: LoginAreaProps) {
           </div>
           {amberInstalled === false && (
             <p className="text-xs text-muted-foreground text-center px-1">
-              Install Amber (NIP-55) from F-Droid or GitHub, or use Other sign-in options.
+              Install Amber (NIP-55) from F-Droid or GitHub, or tap Log in with secret key.
             </p>
           )}
         </div>

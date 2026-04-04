@@ -20,7 +20,7 @@ interface LoginDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onLogin: () => void;
-  /** When true (e.g. opened from "Other sign-in options" on Android), expand secondary methods immediately. */
+  /** Android: when true (e.g. opened from "Log in with secret key"), focus the nsec field. */
   expandSecondaryOnOpen?: boolean;
 }
 
@@ -47,8 +47,8 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
   }>({});
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('bunker');
-  const [androidOtherMethodsOpen, setAndroidOtherMethodsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const nsecInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const login = useLoginActions();
@@ -65,8 +65,7 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
       setBunkerUri('');
       setErrors({});
       setShowQrScanner(false);
-      setActiveTab(isAndroidApp ? 'key' : 'bunker');
-      setAndroidOtherMethodsOpen(Boolean(expandSecondaryOnOpen));
+      setActiveTab('bunker');
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -75,7 +74,14 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
       // Clean up camera when dialog closes
       stopQrScanner();
     }
-  }, [isOpen, expandSecondaryOnOpen, isAndroidApp]);
+  }, [isOpen, isAndroidApp]);
+
+  // Android: focus nsec when opened from "Log in with secret key"
+  useEffect(() => {
+    if (!isOpen || !isAndroidApp || !expandSecondaryOnOpen) return;
+    const id = window.setTimeout(() => nsecInputRef.current?.focus(), 100);
+    return () => window.clearTimeout(id);
+  }, [isOpen, isAndroidApp, expandSecondaryOnOpen]);
 
   // Clean up camera on unmount
   useEffect(() => {
@@ -451,20 +457,29 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
     </div>
   );
 
-  const renderKeyTab = () => (
+  const renderKeyTab = (variant: 'web' | 'android' = 'web') => (
     <form onSubmit={(e) => {
       e.preventDefault();
       handleKeyLogin();
     }} className='space-y-4'>
-      <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
-        <p className="text-xs text-amber-800 dark:text-amber-200">
-          <strong>Not recommended:</strong> Entering your secret key directly is less secure. Consider using a remote signer instead.
-        </p>
-      </div>
+      {variant === 'web' ? (
+        <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+          <p className="text-xs text-amber-800 dark:text-amber-200">
+            <strong>Not recommended:</strong> Entering your secret key directly is less secure. Consider using a remote signer instead.
+          </p>
+        </div>
+      ) : (
+        <div className="p-3 rounded-lg border border-border bg-muted/40">
+          <p className="text-xs text-muted-foreground">
+            Paste your <code className="text-foreground">nsec1…</code> key if you are not using Amber. Only use keys you trust on this device.
+          </p>
+        </div>
+      )}
 
       <div className='space-y-2'>
         <Input
-          id='nsec'
+          id={variant === 'android' ? 'nsec-android' : 'nsec'}
+          ref={variant === 'android' ? nsecInputRef : undefined}
           type="password"
           value={nsec}
           onChange={(e) => {
@@ -557,7 +572,7 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
       </TabsContent>
 
       <TabsContent value='key'>
-        {renderKeyTab()}
+        {renderKeyTab('web')}
       </TabsContent>
     </Tabs>
   );
@@ -571,7 +586,7 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
           </DialogTitle>
           {isAndroidApp && (
             <p className="text-center text-xs text-muted-foreground pt-2 px-2">
-              On Android, signing in with Amber (NIP-55) is the supported flow—no QR or bunker URI required.
+              Sign in with Amber (NIP-55) or paste your secret key below.
             </p>
           )}
         </DialogHeader>
@@ -630,8 +645,8 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
             </div>
           )}
 
-          {/* Extension Login - shown if extension is available */}
-          {hasExtension && (
+          {/* Extension Login - website only */}
+          {hasExtension && !isAndroidApp && (
             <div className="space-y-3">
               {errors.extension && (
                 <Alert variant="destructive">
@@ -649,26 +664,12 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
             </div>
           )}
 
-          {/* Android: tuck bunker / Nostr Connect / nsec under one collapsible */}
+          {/* Android: Amber + nsec only (no bunker / Nostr Connect) */}
           {isAndroidApp ? (
-            <Collapsible
-              className="space-y-4"
-              open={androidOtherMethodsOpen}
-              onOpenChange={setAndroidOtherMethodsOpen}
-            >
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className="w-full flex items-center justify-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors py-2 rounded-lg border border-dashed border-border"
-                >
-                  <span>Other sign-in options</span>
-                  <ChevronDown
-                    className={`w-4 h-4 transition-transform ${androidOtherMethodsOpen ? 'rotate-180' : ''}`}
-                  />
-                </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="pt-2">{renderTabs()}</CollapsibleContent>
-            </Collapsible>
+            <div className="space-y-4 pt-1 border-t border-border">
+              <p className="text-xs font-medium text-center text-muted-foreground">Or paste secret key</p>
+              {renderKeyTab('android')}
+            </div>
           ) : hasExtension ? (
             <Collapsible className="space-y-4" open={isMoreOptionsOpen} onOpenChange={setIsMoreOptionsOpen}>
               <CollapsibleTrigger asChild>

@@ -35,16 +35,6 @@ export function dedupeBlossomUrlsByHash(urls: string[]): string[] {
   return result;
 }
 
-function collectUrls(...lists: (string | undefined)[][]): string[] {
-  const out: string[] = [];
-  for (const list of lists) {
-    for (const u of list) {
-      if (isBlossomUrl(u)) out.push(u!);
-    }
-  }
-  return out;
-}
-
 /** Data snapshot from app hooks - pass whatever is available */
 export interface BlossomSyncData {
   vehicles?: Vehicle[];

@@ -7,6 +7,8 @@ import { useAppContext } from "@/hooks/useAppContext";
 import { UserPreferencesContext } from "@/contexts/UserPreferencesContext";
 import { logger } from "@/lib/logger";
 import { isRelayUrlSecure } from "@/lib/relay";
+import type { OutboxNostr } from "@/lib/publishOutbox";
+import { publishEventThroughOutbox } from "@/lib/publishOutbox";
 
 import type { NostrEvent } from "@nostrify/nostrify";
 
@@ -45,8 +47,12 @@ export function useNostrPublish(): UseMutationResult<NostrEvent, Error, PublishE
         .filter((r) => r.write && !privateRelayUrls.includes(r.url))
         .map((r) => r.url);
 
+      const allWriteRelayUrls = config.relayMetadata.relays.filter((r) => r.write).map((r) => r.url);
+
       const { dualPublish } = t;
       const encryptedContent = t.content ?? "";
+
+      const pool = nostr as unknown as OutboxNostr;
 
       if (dualPublish && privateRelayUrls.length > 0 && publicRelayUrls.length > 0) {
         // Dual publish: plaintext to private relays, encrypted to public relays
@@ -62,10 +68,9 @@ export function useNostrPublish(): UseMutationResult<NostrEvent, Error, PublishE
           tags,
           created_at,
         });
-        const signal = AbortSignal.timeout(5000);
         await Promise.all([
-          nostr.group(privateRelayUrls).event(plainEvent, { signal }),
-          nostr.group(publicRelayUrls).event(encEvent, { signal }),
+          publishEventThroughOutbox(pool, plainEvent, privateRelayUrls),
+          publishEventThroughOutbox(pool, encEvent, publicRelayUrls),
         ]);
         return plainEvent;
       }
@@ -78,18 +83,18 @@ export function useNostrPublish(): UseMutationResult<NostrEvent, Error, PublishE
           tags,
           created_at,
         });
-        await nostr.group(privateRelayUrls).event(plainEvent, { signal: AbortSignal.timeout(5000) });
+        await publishEventThroughOutbox(pool, plainEvent, privateRelayUrls);
         return plainEvent;
       }
 
-      // Single publish to full pool (no dual or no private relays)
+      // Single publish to all write relays (explicit list so every relay must accept)
       const event = await user.signer.signEvent({
         kind: t.kind,
         content: encryptedContent,
         tags,
         created_at,
       });
-      await nostr.event(event, { signal: AbortSignal.timeout(5000) });
+      await publishEventThroughOutbox(pool, event, allWriteRelayUrls);
       return event;
     },
     onError: (error) => {

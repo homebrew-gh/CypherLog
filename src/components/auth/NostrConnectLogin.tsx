@@ -173,13 +173,13 @@ export function NostrConnectLogin({
             // Try NIP-44 first
             decrypted = await clientSigner.nip44!.decrypt(event.pubkey, event.content);
             logger.log('[NostrConnectLogin] Decrypted with NIP-44');
-          } catch (e) {
+          } catch {
             logger.log('[NostrConnectLogin] NIP-44 decrypt failed, trying NIP-04');
             // Fall back to NIP-04
             try {
               decrypted = await clientSigner.nip04!.decrypt(event.pubkey, event.content);
               logger.log('[NostrConnectLogin] Decrypted with NIP-04');
-            } catch (e2) {
+            } catch {
               logger.warn('[NostrConnectLogin] Failed to decrypt response with both NIP-44 and NIP-04');
               continue;
             }

@@ -19,6 +19,13 @@ import { isRelayUrlSecure } from '@/lib/relay';
 import { runWithConcurrencyLimit } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import { useToast } from './useToast';
+import type { OutboxNostr } from '@/lib/publishOutbox';
+import {
+  enqueuePublishJob,
+  isPublishOutboxSupported,
+  publishEventThroughOutbox,
+  waitForPublishJobs,
+} from '@/lib/publishOutbox';
 
 const BACKFILL_STORAGE_KEY = 'cypherlog-backfill-last';
 const BACKFILL_PUBLISH_CONCURRENCY = 4;
@@ -96,8 +103,8 @@ export function usePrivateRelayBackfill() {
 
       try {
         const publicGroup = nostr.group(publicRelayUrls);
-        const privateGroup = nostr.group(privateRelayUrls);
         const signal = AbortSignal.timeout(60_000);
+        const pool = nostr as unknown as OutboxNostr;
 
         const events = await publicGroup.query(
           [
@@ -112,14 +119,13 @@ export function usePrivateRelayBackfill() {
         );
 
         const deduped = dedupeEventsByLogicalKey(events);
-        let published = 0;
 
-        await runWithConcurrencyLimit(
+        const jobResults = await runWithConcurrencyLimit(
           deduped,
           BACKFILL_PUBLISH_CONCURRENCY,
-          async (ev: NostrEvent) => {
+          async (ev: NostrEvent): Promise<string | null> => {
             if (!ev.content?.startsWith(ENCRYPTED_MARKER)) {
-              return;
+              return null;
             }
             try {
               const plainContent = await decryptFromSelf(ev.content);
@@ -129,13 +135,29 @@ export function usePrivateRelayBackfill() {
                 tags: ev.tags,
                 created_at: ev.created_at,
               });
-              await privateGroup.event(plainEvent, { signal: AbortSignal.timeout(5000) });
-              published++;
+              if (!isPublishOutboxSupported()) {
+                await publishEventThroughOutbox(pool, plainEvent, privateRelayUrls, {
+                  jobTimeoutMs: 60_000,
+                });
+                return null;
+              }
+              return await enqueuePublishJob(plainEvent, privateRelayUrls);
             } catch (e) {
               logger.warn('[Backfill] Skip event (decrypt/sign failed):', ev.id, e);
+              return null;
             }
           }
         );
+
+        const enqueued = jobResults.filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+        if (enqueued.length > 0) {
+          await waitForPublishJobs(pool, enqueued, {
+            timeoutMs: Math.min(45 * 60 * 1000, Math.max(120_000, enqueued.length * 10_000)),
+          });
+        }
+
+        const published = enqueued.length;
 
         const newLast = now;
         setLastBackfillAtState(newLast);

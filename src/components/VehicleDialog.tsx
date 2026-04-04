@@ -18,7 +18,7 @@ import { useWarrantyActions } from '@/hooks/useWarranties';
 import { useSubscriptionActions } from '@/hooks/useSubscriptions';
 import { useUploadFile, useDeleteFile, NoPrivateServerError, useCanUploadFiles } from '@/hooks/useUploadFile';
 import { toast } from '@/hooks/useToast';
-import { FUEL_TYPES, BILLING_FREQUENCIES, type Vehicle, type VehicleDocument, type BillingFrequency } from '@/lib/types';
+import { FUEL_TYPES, BILLING_FREQUENCIES, type Vehicle, type BillingFrequency } from '@/lib/types';
 import { logger } from '@/lib/logger';
 
 interface VehicleDialogProps {

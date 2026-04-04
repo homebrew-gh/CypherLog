@@ -8,6 +8,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useEncryptionSettings } from '@/contexts/EncryptionContext';
 import { isPrivateDataKind } from '@/lib/privateRelayKinds';
 import { logger } from '@/lib/logger';
+import { PublishOutboxManager } from '@/components/PublishOutboxManager';
 
 /** Setter for private relay URLs; synced from UserPreferencesProvider when preferences load */
 export const SetPrivateRelayUrlsContext = createContext<((urls: string[]) => void) | null>(null);
@@ -208,6 +209,7 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
     <SetPrivateRelayUrlsContext.Provider value={setPrivateRelayUrls}>
       <NostrContext.Provider value={{ nostr: poolInstance } as unknown as React.ComponentProps<typeof NostrContext.Provider>['value']}>
         <SignerRefUpdater signerRef={signerRef} currentUserPubkeyRef={currentUserPubkeyRef} />
+        <PublishOutboxManager />
         {children}
       </NostrContext.Provider>
     </SetPrivateRelayUrlsContext.Provider>

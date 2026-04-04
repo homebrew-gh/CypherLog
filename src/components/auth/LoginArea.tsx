@@ -3,6 +3,13 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button.tsx';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import LoginDialog from './LoginDialog';
 import SignupDialog from './SignupDialog';
 import { useLoggedInAccounts } from '@/hooks/useLoggedInAccounts';
@@ -27,6 +34,7 @@ export function LoginArea({ className }: LoginAreaProps) {
   const [amberBusy, setAmberBusy] = useState(false);
   const [amberErr, setAmberErr] = useState<string | null>(null);
   const [amberInstalled, setAmberInstalled] = useState<boolean | null>(null);
+  const [androidSignInOpen, setAndroidSignInOpen] = useState(false);
 
   const isAndroidApp = useCapacitorAndroid();
 
@@ -52,6 +60,7 @@ export function LoginArea({ className }: LoginAreaProps) {
     setLoginDialogOpen(false);
     setExpandSecondaryLogin(false);
     setSignupDialogOpen(false);
+    setAndroidSignInOpen(false);
     setAmberErr(null);
   };
 
@@ -84,32 +93,80 @@ export function LoginArea({ className }: LoginAreaProps) {
         />
       ) : isAndroidApp ? (
         <div className="flex flex-col gap-2 w-full max-w-sm">
-          {amberErr && (
+          {amberErr && !androidSignInOpen && (
             <Alert variant="destructive" className="py-2">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription className="text-xs">{amberErr}</AlertDescription>
             </Alert>
           )}
-          <Button
-            onClick={handleAmberDirect}
-            disabled={amberBusy || amberInstalled === false}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground w-full font-medium transition-all hover:bg-primary/90"
-          >
-            <span className="truncate">{amberBusy ? 'Opening Amber…' : 'Log in with Amber'}</span>
-          </Button>
-          <div className="flex gap-2 justify-center flex-wrap">
-            <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={openSecretKeyLogin}>
-              Log in with secret key
+          <div className="flex gap-3 justify-center">
+            <Button
+              type="button"
+              onClick={() => setAndroidSignInOpen(true)}
+              disabled={amberBusy}
+              className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 font-medium text-primary-foreground transition-all hover:bg-primary/90"
+            >
+              <span className="truncate">Log in</span>
             </Button>
-            <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => setSignupDialogOpen(true)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSignupDialogOpen(true)}
+              className="flex shrink-0 items-center gap-2 rounded-full px-4 py-2 font-medium"
+            >
               Sign up
             </Button>
           </div>
-          {amberInstalled === false && (
-            <p className="text-xs text-muted-foreground text-center px-1">
-              Install Amber (NIP-55) from F-Droid or GitHub, or tap Log in with secret key.
-            </p>
-          )}
+
+          <Dialog
+            open={androidSignInOpen}
+            onOpenChange={(open) => {
+              if (!open && amberBusy) return;
+              setAndroidSignInOpen(open);
+            }}
+          >
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Sign in</DialogTitle>
+                <DialogDescription>
+                  Use Amber (NIP-55) or enter your secret key on this device.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-3 py-1">
+                {amberErr && (
+                  <Alert variant="destructive" className="py-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription className="text-xs">{amberErr}</AlertDescription>
+                  </Alert>
+                )}
+                <Button
+                  type="button"
+                  onClick={() => void handleAmberDirect()}
+                  disabled={amberBusy || amberInstalled === false}
+                  className="w-full rounded-full font-medium"
+                >
+                  {amberBusy ? 'Opening Amber…' : 'Log in with Amber'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full rounded-full font-medium"
+                  disabled={amberBusy}
+                  onClick={() => {
+                    setAndroidSignInOpen(false);
+                    openSecretKeyLogin();
+                  }}
+                >
+                  Log in with secret key
+                </Button>
+                {amberInstalled === false && (
+                  <p className="text-center text-xs text-muted-foreground px-1">
+                    Install Amber (NIP-55) from F-Droid or GitHub, or use your secret key above.
+                  </p>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       ) : (
         <div className="flex flex-col gap-2 w-full max-w-sm">

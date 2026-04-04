@@ -1,17 +1,9 @@
 import { useNostr } from '@nostrify/react';
 import { NLogin, type NLoginType, useNostrLogin } from '@nostrify/react/login';
 
+import { buildAmberGetPublicKeyPermissionsJson } from '@/lib/amberNip55Permissions';
 import { AmberSigner, isCapacitorAndroid } from '@/lib/capacitor/amberSignerPlugin';
 import { normalizeSignerPubkey } from '@/lib/normalizeSignerPubkey';
-
-/** NIP-55 default permissions for get_public_key (Amber pre-approval for typical Cypher Log usage). */
-const AMBER_GET_PUBLIC_KEY_PERMISSIONS = JSON.stringify([
-  { type: 'sign_event' },
-  { type: 'nip44_encrypt' },
-  { type: 'nip44_decrypt' },
-  { type: 'nip04_encrypt' },
-  { type: 'nip04_decrypt' },
-]);
 
 // NOTE: This file should not be edited except for adding new login methods.
 
@@ -47,7 +39,7 @@ export function useLoginActions() {
         );
       }
       const { pubkey: rawPubkey, packageName } = await AmberSigner.getPublicKey({
-        permissionsJson: AMBER_GET_PUBLIC_KEY_PERMISSIONS,
+        permissionsJson: buildAmberGetPublicKeyPermissionsJson(),
       });
       const pubkey = normalizeSignerPubkey(rawPubkey);
       if (!packageName) {

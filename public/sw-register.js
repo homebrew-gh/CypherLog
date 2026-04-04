@@ -3,6 +3,8 @@
  * Loaded from index.html; runs in global scope.
  */
 (function () {
+  // Capacitor WebView: skip SW (cache/update flow is handled by app deploy + sync)
+  if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) return;
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
 
   window.addEventListener('load', async () => {

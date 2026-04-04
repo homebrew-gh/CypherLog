@@ -1,0 +1,8 @@
+{
+  "appId": "io.cypherlog.app",
+  "appName": "Cypher Log",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

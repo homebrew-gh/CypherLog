@@ -1,6 +1,6 @@
 // Cypher Log Service Worker
 // Version should be updated when deploying new versions
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const STATIC_CACHE = `cypherlog-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `cypherlog-dynamic-${CACHE_VERSION}`;
 

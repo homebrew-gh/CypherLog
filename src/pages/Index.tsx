@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSeoMeta } from '@unhead/react';
-import { Package, Calendar, Menu, Settings, Car, Shield, HelpCircle, Cloud, CreditCard, TreePine, Palette, RefreshCw, Coins, HardDrive, PawPrint, PlayCircle, KeyRound, Users, ChevronDown, Building2, Scale, Bot } from 'lucide-react';
+import { Package, Calendar, Menu, Settings, Car, Shield, HelpCircle, Cloud, CreditCard, TreePine, Palette, RefreshCw, Coins, HardDrive, PawPrint, PlayCircle, KeyRound, Users, ChevronDown, Building2, Scale, Bot, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -48,6 +49,7 @@ import { useTabPreferences, type TabId } from '@/hooks/useTabPreferences';
 import { useLoggedInAccounts } from '@/hooks/useLoggedInAccounts';
 import { useApplyColorTheme } from '@/hooks/useColorTheme';
 import { useDataSyncStatus } from '@/hooks/useDataSyncStatus';
+import { useAmberSignerProbe } from '@/hooks/useAmberSignerProbe';
 
 // House Key Recommendation Component - Compact header version with popover
 const HouseKeyRecommendation = () => {
@@ -106,6 +108,7 @@ const Index = () => {
   const { isProfileLoading } = useLoggedInAccounts();
   const { preferences, setActiveTab, isLoading: _isPreferencesLoading } = useTabPreferences();
   const { isSynced: isDataSynced } = useDataSyncStatus();
+  const { result: amberProbe, rerun: rerunAmberProbe } = useAmberSignerProbe();
   
   // Apply color theme to document root
   useApplyColorTheme();
@@ -423,6 +426,38 @@ const Index = () => {
                 <RefreshCw className="h-4 w-4 animate-spin" />
                 <span>Syncing your data from Nostr relays...</span>
               </div>
+            )}
+
+            {amberProbe.status === 'running' && (
+              <Alert>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <AlertTitle>Checking Amber signer</AlertTitle>
+                <AlertDescription>
+                  Cypher Log is verifying that Amber can decrypt your encrypted data and sign relay-auth events.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {amberProbe.status === 'failed' && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Amber login succeeded, but Cypher Log still cannot load data</AlertTitle>
+                <AlertDescription className="space-y-3">
+                  <p>{amberProbe.message}</p>
+                  <p>
+                    Raw `nsec` login works, so your data is present. This Amber session is missing a capability Cypher Log
+                    needs after login.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={rerunAmberProbe}>
+                      Retry Amber check
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setRelayManagementOpen(true)}>
+                      Open relay settings
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
             )}
             
             {/* Tab Content */}

@@ -608,8 +608,13 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, exp
               )}
               <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 space-y-2">
                 <p className="text-xs text-amber-900 dark:text-amber-200">
-                  Opens <strong>Amber</strong> (or another NIP-55 signer). Approve the connection once; you can grant
-                  signing and NIP-44 permissions in Amber so you are not prompted for every action.
+                  Opens <strong>Amber</strong> (or another NIP-55 signer). In Amber, choose
+                  {' '}<strong>Manual for new app</strong>, then open <strong>Permissions</strong> so Cypher Log keeps its
+                  custom event-kind and NIP-44 permissions.
+                </p>
+                <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
+                  If you already approved Cypher Log with Amber&apos;s <strong>Basic</strong> mode, remove Cypher Log from
+                  Amber&apos;s app permissions and log in again.
                 </p>
                 <Button
                   className="w-full h-11"

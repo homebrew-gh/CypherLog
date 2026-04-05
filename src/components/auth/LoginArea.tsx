@@ -139,6 +139,10 @@ export function LoginArea({ className }: LoginAreaProps) {
                     <AlertDescription className="text-xs">{amberErr}</AlertDescription>
                   </Alert>
                 )}
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                  In Amber, choose <strong>Manual for new app</strong>, then open <strong>Permissions</strong>. Amber&apos;s
+                  default <strong>Basic</strong> mode does not keep Cypher Log&apos;s custom event-kind permissions.
+                </div>
                 <Button
                   type="button"
                   onClick={() => void handleAmberDirect()}

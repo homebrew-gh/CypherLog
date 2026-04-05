@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { Car, Gauge, Wrench, Plus, X, Package, Building2, Receipt, ImagePlus, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -50,33 +50,6 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
   const { mutateAsync: uploadFile } = useUploadFile();
   const canUploadReceipt = useCanUploadFiles();
   const receiptInputRef = useRef<HTMLInputElement>(null);
-  /** Radix Dialog often calls onOpenChange(false) when the native file picker returns (focus/pointer quirks). */
-  const blockDialogCloseForFilePickerRef = useRef(false);
-  const filePickerGuardTimeoutRef = useRef<number | null>(null);
-
-  const clearFilePickerDialogGuard = useCallback((delayMs = 0) => {
-    if (filePickerGuardTimeoutRef.current != null) {
-      window.clearTimeout(filePickerGuardTimeoutRef.current);
-      filePickerGuardTimeoutRef.current = null;
-    }
-    if (delayMs <= 0) {
-      blockDialogCloseForFilePickerRef.current = false;
-    } else {
-      filePickerGuardTimeoutRef.current = window.setTimeout(() => {
-        blockDialogCloseForFilePickerRef.current = false;
-        filePickerGuardTimeoutRef.current = null;
-      }, delayMs);
-    }
-  }, []);
-
-  const openReceiptFilePicker = useCallback(() => {
-    blockDialogCloseForFilePickerRef.current = true;
-    if (filePickerGuardTimeoutRef.current != null) {
-      window.clearTimeout(filePickerGuardTimeoutRef.current);
-    }
-    filePickerGuardTimeoutRef.current = window.setTimeout(clearFilePickerDialogGuard, 60_000);
-    receiptInputRef.current?.click();
-  }, [clearFilePickerDialogGuard]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -114,28 +87,23 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
     }
   }, [isOpen, preselectedVehicleId]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      clearFilePickerDialogGuard(0);
+  const handleReceiptChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) {
+      setReceiptFile(null);
       return;
     }
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      // Delay so any Radix dismiss events that fire on re-focus are still blocked.
-      clearFilePickerDialogGuard(800);
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [isOpen, clearFilePickerDialogGuard]);
-
-  useEffect(() => {
-    if (!isOpen || !canUploadReceipt) return;
-    const el = receiptInputRef.current;
-    if (!el) return;
-    const onPickerCancel = () => clearFilePickerDialogGuard(800);
-    el.addEventListener('cancel', onPickerCancel);
-    return () => el.removeEventListener('cancel', onPickerCancel);
-  }, [isOpen, canUploadReceipt, clearFilePickerDialogGuard]);
+    if (!isAllowedReceiptFile(file)) {
+      toast({
+        title: 'Unsupported file type',
+        description: 'Choose a photo (JPEG, PNG, etc.) or a PDF receipt.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setReceiptFile(file);
+  };
 
   const handleAddPart = () => {
     if (!newPart.name.trim()) {
@@ -273,29 +241,20 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
   };
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          if (blockDialogCloseForFilePickerRef.current) {
-            return;
-          }
-          onClose();
-        }
-      }}
-    >
-      <DialogContent
-        className="max-w-[95vw] sm:max-w-lg max-h-[90dvh] overflow-y-auto"
-        // Native file pickers (Android WebView / Capacitor) steal focus; when they return,
-        // Radix often treats that as an "outside" dismiss and closes the dialog — send user
-        // "back" as if they left the flow. Keep the modal open; use Cancel or the X to close.
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onFocusOutside={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => {
-          if (blockDialogCloseForFilePickerRef.current) e.preventDefault();
-        }}
-      >
+    <>
+    {/* File input lives OUTSIDE the Dialog so Android's native file picker
+        cannot trigger Radix's focus-trap / dismiss-layer and close the modal. */}
+    <input
+      ref={receiptInputRef}
+      type="file"
+      accept={RECEIPT_FILE_ACCEPT}
+      className="sr-only"
+      tabIndex={-1}
+      onChange={handleReceiptChange}
+    />
+
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-5 w-5 text-primary" />
@@ -377,33 +336,6 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
               </Alert>
             ) : (
               <div className="space-y-2">
-                <input
-                  ref={receiptInputRef}
-                  type="file"
-                  accept={RECEIPT_FILE_ACCEPT}
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = '';
-                    // Delay clearing the guard so Radix dismiss events that fire
-                    // in the same tick (focus returning from native file picker)
-                    // are still blocked.
-                    clearFilePickerDialogGuard(800);
-                    if (!file) {
-                      setReceiptFile(null);
-                      return;
-                    }
-                    if (!isAllowedReceiptFile(file)) {
-                      toast({
-                        title: 'Unsupported file type',
-                        description: 'Choose a photo (JPEG, PNG, etc.) or a PDF receipt.',
-                        variant: 'destructive',
-                      });
-                      return;
-                    }
-                    setReceiptFile(file);
-                  }}
-                />
                 {receiptFile ? (
                   <div className="flex items-center gap-2 flex-wrap rounded-md border p-2 bg-muted/30">
                     <span className="text-sm truncate flex-1 min-w-0">{receiptFile.name}</span>
@@ -423,7 +355,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
                     variant="outline"
                     size="sm"
                     className="w-full sm:w-auto"
-                    onClick={openReceiptFilePicker}
+                    onClick={() => receiptInputRef.current?.click()}
                   >
                     <ImagePlus className="h-4 w-4 mr-2" />
                     Choose receipt (image or PDF)
@@ -605,5 +537,6 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

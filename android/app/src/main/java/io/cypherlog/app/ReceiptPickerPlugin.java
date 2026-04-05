@@ -5,7 +5,6 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
-import android.util.Base64;
 
 import androidx.activity.result.ActivityResult;
 
@@ -16,7 +15,8 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -68,7 +68,7 @@ public class ReceiptPickerPlugin extends Plugin {
       JSObject ret = new JSObject();
       ret.put("name", (name == null || name.isEmpty()) ? "receipt" : name);
       ret.put("mimeType", mimeType);
-      ret.put("base64", readUriAsBase64(uri));
+      ret.put("path", copyUriToCache(uri, ret.getString("name")));
       call.resolve(ret);
     } catch (Exception e) {
       call.reject("read_failed", e.getMessage(), e);
@@ -104,19 +104,28 @@ public class ReceiptPickerPlugin extends Plugin {
     return "application/octet-stream";
   }
 
-  private String readUriAsBase64(Uri uri) throws IOException {
+  private String copyUriToCache(Uri uri, String fileName) throws IOException {
     InputStream input = getContext().getContentResolver().openInputStream(uri);
     if (input == null) {
       throw new IOException("Could not open the selected file");
     }
 
-    try (InputStream stream = input; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+    File cacheDir = new File(getContext().getCacheDir(), "receipts");
+    if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+      throw new IOException("Could not create receipt cache directory");
+    }
+
+    String safeName = (fileName == null || fileName.isEmpty()) ? "receipt" : fileName.replaceAll("[^a-zA-Z0-9._-]", "_");
+    File outFile = new File(cacheDir, System.currentTimeMillis() + "_" + safeName);
+
+    try (InputStream stream = input; FileOutputStream output = new FileOutputStream(outFile)) {
       byte[] buffer = new byte[8192];
       int read;
       while ((read = stream.read(buffer)) != -1) {
         output.write(buffer, 0, read);
       }
-      return Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP);
+      output.flush();
+      return outFile.getAbsolutePath();
     }
   }
 }

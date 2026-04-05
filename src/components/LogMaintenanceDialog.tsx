@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { format } from 'date-fns';
 import { Car, Gauge, Wrench, Plus, X, Package, Building2, Receipt, ImagePlus, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -42,14 +43,14 @@ function isAllowedReceiptFile(file: File): boolean {
   return false;
 }
 
-function base64ToFile(base64: string, name: string, mimeType: string): File {
-  const binary = window.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+async function localPathToFile(path: string, name: string, mimeType: string): Promise<File> {
+  const response = await fetch(Capacitor.convertFileSrc(path));
+  if (!response.ok) {
+    throw new Error('Could not read the selected receipt file.');
   }
-  return new File([bytes], name || 'receipt', {
-    type: mimeType || 'application/octet-stream',
+  const blob = await response.blob();
+  return new File([blob], name || 'receipt', {
+    type: mimeType || blob.type || 'application/octet-stream',
   });
 }
 
@@ -128,7 +129,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
       setIsPickingReceipt(true);
       try {
         const picked = await ReceiptPicker.pickReceipt();
-        const file = base64ToFile(picked.base64, picked.name, picked.mimeType);
+        const file = await localPathToFile(picked.path, picked.name, picked.mimeType);
         if (!isAllowedReceiptFile(file)) {
           toast({
             title: 'Unsupported file type',

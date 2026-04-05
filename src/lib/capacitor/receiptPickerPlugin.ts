@@ -1,7 +1,7 @@
 import { registerPlugin, WebPlugin } from '@capacitor/core';
 
 export interface ReceiptPickerResult {
-  base64: string;
+  path: string;
   mimeType: string;
   name: string;
 }

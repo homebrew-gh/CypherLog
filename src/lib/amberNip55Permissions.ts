@@ -36,6 +36,15 @@ const ZAP_REQUEST_KIND = 9734;
 /** NIP-98 HTTP auth (useShakespeare). */
 const NIP98_KIND = 27235;
 
+/** NIP-22 comments. */
+const COMMENT_KIND = 1111;
+
+/**
+ * Bump when Cypher Log expands the Amber permission envelope so saved Android
+ * sign-ins can be re-authorized automatically.
+ */
+export const AMBER_PERMISSION_SCHEMA_VERSION = 2;
+
 const CYPHERLOG_DATA_KINDS = [
   APPLIANCE_KIND,
   VEHICLE_KIND,
@@ -63,6 +72,7 @@ const OTHER_SIGNED_KINDS = [
   10002,
   5,
   1,
+  COMMENT_KIND,
   4,
   13,
   1059,

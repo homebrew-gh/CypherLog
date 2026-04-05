@@ -1,7 +1,10 @@
 import { useNostr } from '@nostrify/react';
 import { NLogin, type NLoginType, useNostrLogin } from '@nostrify/react/login';
 
-import { buildAmberGetPublicKeyPermissionsJson } from '@/lib/amberNip55Permissions';
+import {
+  AMBER_PERMISSION_SCHEMA_VERSION,
+  buildAmberGetPublicKeyPermissionsJson,
+} from '@/lib/amberNip55Permissions';
 import { AmberSigner, isCapacitorAndroid } from '@/lib/capacitor/amberSignerPlugin';
 import { normalizeSignerPubkey } from '@/lib/normalizeSignerPubkey';
 
@@ -50,7 +53,10 @@ export function useLoginActions() {
         type: 'x-amber-android',
         pubkey,
         createdAt: new Date().toISOString(),
-        data: { signerPackage: packageName },
+        data: {
+          signerPackage: packageName,
+          permissionsVersion: AMBER_PERMISSION_SCHEMA_VERSION,
+        },
       };
       addLogin(login);
     },

@@ -39,6 +39,22 @@ public class AmberSignerPlugin extends Plugin {
     intent.putExtra(Browser.EXTRA_APPLICATION_ID, getContext().getPackageName());
   }
 
+  /**
+   * Amber still uses a visible Activity hop for remembered NIP-55 requests. We cannot avoid
+   * launching Amber, but we can suppress the transition animation on both the outbound launch
+   * and the return trip so the WebView does not appear to flash as much.
+   */
+  private void attachNoAnimation(Intent intent) {
+    intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+  }
+
+  private void suppressHostTransitionAnimation() {
+    Activity activity = getActivity();
+    if (activity != null) {
+      activity.overridePendingTransition(0, 0);
+    }
+  }
+
   @PluginMethod
   public void isAvailable(PluginCall call) {
     Intent probe = new Intent(Intent.ACTION_VIEW, Uri.parse("nostrsigner:"));
@@ -61,7 +77,9 @@ public class AmberSignerPlugin extends Plugin {
       intent.putExtra("type", "get_public_key");
       intent.putExtra("permissions", permissionsJson);
       attachAmberUriPayloadFix(intent);
+      attachNoAnimation(intent);
       startActivityForResult(call, intent, "getPublicKeyResult");
+      suppressHostTransitionAnimation();
     } catch (Exception e) {
       call.reject("intent_failed", e.getMessage(), e);
     }
@@ -69,6 +87,7 @@ public class AmberSignerPlugin extends Plugin {
 
   @ActivityCallback
   private void getPublicKeyResult(PluginCall call, ActivityResult result) {
+    suppressHostTransitionAnimation();
     if (call == null) {
       return;
     }
@@ -117,7 +136,9 @@ public class AmberSignerPlugin extends Plugin {
       intent.putExtra("current_user", pubkey);
       intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
       attachAmberUriPayloadFix(intent);
+      attachNoAnimation(intent);
       startActivityForResult(call, intent, "signEventResult");
+      suppressHostTransitionAnimation();
     } catch (Exception e) {
       call.reject("intent_failed", e.getMessage(), e);
     }
@@ -125,6 +146,7 @@ public class AmberSignerPlugin extends Plugin {
 
   @ActivityCallback
   private void signEventResult(PluginCall call, ActivityResult result) {
+    suppressHostTransitionAnimation();
     if (call == null) {
       return;
     }
@@ -199,7 +221,9 @@ public class AmberSignerPlugin extends Plugin {
       intent.putExtra("pubkey", peerPubkey);
       intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
       attachAmberUriPayloadFix(intent);
+      attachNoAnimation(intent);
       startActivityForResult(call, intent, callbackName);
+      suppressHostTransitionAnimation();
     } catch (Exception e) {
       call.reject("intent_failed", e.getMessage(), e);
     }
@@ -229,6 +253,7 @@ public class AmberSignerPlugin extends Plugin {
   }
 
   private void resolveCryptoResult(PluginCall call, ActivityResult result) {
+    suppressHostTransitionAnimation();
     if (call == null) {
       return;
     }

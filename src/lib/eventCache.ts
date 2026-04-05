@@ -158,6 +158,7 @@ export async function cacheEvents(events: NostrEvent[]): Promise<void> {
         tx.onerror = () => reject(tx.error);
       });
     });
+    await applyKindFiveDeletionsFromEvents(events);
   } catch (error) {
     logger.error('[EventCache] Failed to cache events:', error);
   }
@@ -226,16 +227,15 @@ export async function deleteCachedEvent(event: NostrEvent): Promise<void> {
  */
 export async function deleteCachedEventByAddress(kind: number, pubkey: string, dTag: string): Promise<void> {
   try {
-    const db = await openDB();
-    const tx = db.transaction(EVENTS_STORE, 'readwrite');
-    const store = tx.objectStore(EVENTS_STORE);
     const cacheKey = `${kind}:${pubkey}:${dTag}`;
-    
-    store.delete(cacheKey);
-
-    return new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+    await withDB((db) => {
+      const tx = db.transaction(EVENTS_STORE, 'readwrite');
+      const store = tx.objectStore(EVENTS_STORE);
+      store.delete(cacheKey);
+      return new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
     });
   } catch (error) {
     logger.error('[EventCache] Failed to delete cached event by address:', error);
@@ -259,6 +259,60 @@ export async function deleteCachedEventById(eventId: string): Promise<void> {
   } catch (error) {
     logger.error('[EventCache] Failed to delete cached event by id:', error);
   }
+}
+
+/** NIP-09 kind for deletion requests */
+const KIND_DELETION = 5;
+
+/**
+ * Addressable coordinate in an `a` tag: kind (decimal), 64-hex pubkey, then d-tag (may contain colons).
+ */
+const A_TAG_ADDRESSABLE = /^(\d+):([0-9a-fA-F]{64}):(.+)$/;
+
+/**
+ * After storing a batch that may include kind 5 events, remove deleted targets from IndexedDB so
+ * entity hooks that read raw cache rows do not flash stale items before parsers run again.
+ * Runs after `put` so the same batch can both carry a deletion request and (transiently) include
+ * replaced event ids to be removed.
+ */
+async function applyKindFiveDeletionsFromEvents(events: NostrEvent[]): Promise<void> {
+  const kindFive = events.filter((e) => e.kind === KIND_DELETION);
+  if (kindFive.length === 0) return;
+
+  const idsToDelete = new Set<string>();
+  const addressKeys = new Set<string>();
+
+  for (const ev of kindFive) {
+    for (const tag of ev.tags) {
+      const name = tag[0];
+      const value = tag[1];
+      if (!value) continue;
+      if (name === 'e') {
+        idsToDelete.add(value);
+      } else if (name === 'a') {
+        const m = value.match(A_TAG_ADDRESSABLE);
+        if (!m) continue;
+        const kind = parseInt(m[1], 10);
+        if (kind >= 30000) {
+          addressKeys.add(`${kind}:${m[2]}:${m[3]}`);
+        }
+      }
+    }
+  }
+
+  const addressDeletes = [...addressKeys].map((key) => {
+    const firstColon = key.indexOf(':');
+    const secondColon = key.indexOf(':', firstColon + 1);
+    const kind = parseInt(key.slice(0, firstColon), 10);
+    const pubkey = key.slice(firstColon + 1, secondColon);
+    const dTag = key.slice(secondColon + 1);
+    return { kind, pubkey, dTag };
+  });
+
+  await Promise.all([
+    ...[...idsToDelete].map((id) => deleteCachedEventById(id)),
+    ...addressDeletes.map((a) => deleteCachedEventByAddress(a.kind, a.pubkey, a.dTag)),
+  ]);
 }
 
 /**

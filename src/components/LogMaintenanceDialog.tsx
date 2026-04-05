@@ -305,8 +305,16 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
       />
     )}
 
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open && !isAndroidApp) {
+          onClose();
+        }
+      }}
+    >
       <DialogContent
+        hideCloseButton={isAndroidApp}
         className="max-w-[95vw] sm:max-w-lg max-h-[90dvh] overflow-y-auto"
         onPointerDownOutside={(e) => e.preventDefault()}
         onFocusOutside={(e) => e.preventDefault()}

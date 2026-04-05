@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
 import { Car, Gauge, Wrench, Plus, X, Package, Building2, Receipt, ImagePlus, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useUploadFile, useCanUploadFiles, NoPrivateServerError } from '@/hooks/useUploadFile';
 import { toast } from '@/hooks/useToast';
 import { uploadTagsToImetaRow } from '@/lib/maintenanceReceipt';
+import { useCapacitorAndroid } from '@/hooks/useCapacitorAndroid';
 import type { MaintenancePart } from '@/lib/types';
 
 interface LogMaintenanceDialogProps {
@@ -50,6 +52,8 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
   const { mutateAsync: uploadFile } = useUploadFile();
   const canUploadReceipt = useCanUploadFiles();
   const receiptInputRef = useRef<HTMLInputElement>(null);
+  const prevIsOpenRef = useRef(false);
+  const isAndroidApp = useCapacitorAndroid();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -70,21 +74,23 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
   // Get the selected vehicle
   const selectedVehicle = vehicles.find(v => v.id === formData.vehicleId);
 
-  // Reset form when dialog opens
+  // Reset only on closed → open. Resetting whenever `preselectedVehicleId` changed while open
+  // wiped the receipt right after the native file picker returned on some Android WebViews.
   useEffect(() => {
-    if (isOpen) {
-      setFormData({
-        vehicleId: preselectedVehicleId || '',
-        description: '',
-        companyId: '',
-        mileage: '',
-        completedDate: getTodayFormatted(),
-      });
-      setParts([]);
-      setShowAddPart(false);
-      setNewPart({ name: '', partNumber: '', cost: '' });
-      setReceiptFile(null);
-    }
+    const opening = isOpen && !prevIsOpenRef.current;
+    prevIsOpenRef.current = isOpen;
+    if (!opening) return;
+    setFormData({
+      vehicleId: preselectedVehicleId || '',
+      description: '',
+      companyId: '',
+      mileage: '',
+      completedDate: getTodayFormatted(),
+    });
+    setParts([]);
+    setShowAddPart(false);
+    setNewPart({ name: '', partNumber: '', cost: '' });
+    setReceiptFile(null);
   }, [isOpen, preselectedVehicleId]);
 
   const handleReceiptChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -240,21 +246,35 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
     }
   };
 
+  const receiptFileInput =
+    typeof document !== 'undefined' ? (
+      <input
+        ref={receiptInputRef}
+        type="file"
+        accept={RECEIPT_FILE_ACCEPT}
+        className="sr-only fixed left-0 top-0 -z-50 h-px w-px opacity-0"
+        aria-hidden
+        tabIndex={-1}
+        onChange={handleReceiptChange}
+      />
+    ) : null;
+
   return (
     <>
-    {/* File input lives OUTSIDE the Dialog so Android's native file picker
-        cannot trigger Radix's focus-trap / dismiss-layer and close the modal. */}
-    <input
-      ref={receiptInputRef}
-      type="file"
-      accept={RECEIPT_FILE_ACCEPT}
-      className="sr-only"
-      tabIndex={-1}
-      onChange={handleReceiptChange}
-    />
+    {/* Portal to body + non-modal Dialog: Radix still treats WebView file-picker
+        focus loss as "dismiss" unless outside events are prevented and modal trap is off. */}
+    {receiptFileInput ? createPortal(receiptFileInput, document.body) : null}
 
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[90dvh] overflow-y-auto">
+    <Dialog modal={false} open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        className="max-w-[95vw] sm:max-w-lg max-h-[90dvh] overflow-y-auto"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onFocusOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => {
+          if (isAndroidApp) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-5 w-5 text-primary" />

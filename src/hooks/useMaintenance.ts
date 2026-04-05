@@ -111,6 +111,65 @@ function parseMaintenancePlaintext(event: NostrEvent): MaintenanceSchedule | nul
   };
 }
 
+/**
+ * Dual-publish plaintext copy: same tags as encrypted (no description in tags), body is JSON.
+ * Local cache stores this event from useNostrPublish; parseMaintenancePlaintext would return null.
+ */
+function parseMaintenanceDualPublishPlain(event: NostrEvent): MaintenanceSchedule | null {
+  const raw = event.content?.trim();
+  if (!raw || raw.startsWith(ENCRYPTED_MARKER) || raw[0] !== '{') return null;
+
+  let data: MaintenanceScheduleData;
+  try {
+    data = JSON.parse(raw) as MaintenanceScheduleData;
+  } catch {
+    return null;
+  }
+
+  if (!data.description) return null;
+
+  const id = getTagValue(event, 'd');
+  if (!id) return null;
+
+  const aTags = event.tags.filter(([name]) => name === 'a');
+  let applianceId: string | undefined;
+  let vehicleId: string | undefined;
+  let companyId: string | undefined;
+
+  for (const aTag of aTags) {
+    const parts = aTag[1]?.split(':');
+    if (parts && parts.length >= 3) {
+      const kind = parseInt(parts[0], 10);
+      const refId = parts[2];
+      if (kind === APPLIANCE_KIND) applianceId = refId;
+      else if (kind === VEHICLE_KIND) vehicleId = refId;
+      else if (kind === COMPANY_KIND) companyId = refId;
+    }
+  }
+
+  if (!applianceId && !vehicleId && !data.homeFeature) return null;
+  if (!data.isLogOnly && (!data.frequency || !data.frequencyUnit)) return null;
+
+  return {
+    id,
+    applianceId,
+    vehicleId,
+    homeFeature: data.homeFeature,
+    companyId,
+    description: data.description,
+    partNumber: data.partNumber,
+    parts: data.parts?.length ? data.parts : undefined,
+    frequency: data.frequency,
+    frequencyUnit: data.frequencyUnit,
+    mileageInterval: data.mileageInterval,
+    intervalType: data.intervalType,
+    isLogOnly: data.isLogOnly,
+    isArchived: data.isArchived,
+    pubkey: event.pubkey,
+    createdAt: event.created_at,
+  };
+}
+
 // Parse encrypted maintenance from content; refs come from plaintext 'a' tags
 async function parseMaintenanceEncrypted(
   event: NostrEvent,
@@ -242,7 +301,7 @@ async function parseEventsToMaintenance(
     async (event): Promise<MaintenanceSchedule | null> => {
       const schedule = event.content?.startsWith(ENCRYPTED_MARKER)
         ? await parseMaintenanceEncrypted(event, (c) => decryptForCategory<MaintenanceScheduleData>(c))
-        : parseMaintenancePlaintext(event);
+        : parseMaintenancePlaintext(event) ?? parseMaintenanceDualPublishPlain(event);
       if (!schedule || deletedMaintenanceIds.has(schedule.id)) return null;
       if (schedule.applianceId && deletedApplianceIds.has(schedule.applianceId)) return null;
       if (schedule.vehicleId && deletedVehicleIds.has(schedule.vehicleId)) return null;

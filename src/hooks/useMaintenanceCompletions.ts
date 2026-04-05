@@ -79,6 +79,40 @@ function parseCompletionPlaintext(event: NostrEvent): MaintenanceCompletion | nu
   };
 }
 
+/** Dual-publish plaintext: no completed_date tags, JSON body matches MaintenanceCompletionData. */
+function parseCompletionDualPublishPlain(event: NostrEvent): MaintenanceCompletion | null {
+  const raw = event.content?.trim();
+  if (!raw || raw.startsWith(ENCRYPTED_MARKER) || raw[0] !== '{') return null;
+
+  let data: MaintenanceCompletionData;
+  try {
+    data = JSON.parse(raw) as MaintenanceCompletionData;
+  } catch {
+    return null;
+  }
+
+  if (!data.completedDate) return null;
+
+  const id = event.id;
+  const aTag = event.tags.find(([name]) => name === 'a')?.[1];
+  const maintenanceId = aTag?.split(':')[2];
+
+  if (!id || !maintenanceId) return null;
+
+  return {
+    id,
+    maintenanceId,
+    completedDate: data.completedDate,
+    mileageAtCompletion: data.mileageAtCompletion,
+    notes: data.notes,
+    parts: data.parts?.length ? data.parts : undefined,
+    receiptUrl: data.receiptUrl,
+    receiptMime: data.receiptMime,
+    pubkey: event.pubkey,
+    createdAt: event.created_at,
+  };
+}
+
 // Parse encrypted completion from content; maintenance ref from plaintext 'a' tag
 async function parseCompletionEncrypted(
   event: NostrEvent,
@@ -143,7 +177,7 @@ async function parseEventsToCompletions(
     async (event): Promise<MaintenanceCompletion | null> => {
       const completion = event.content?.startsWith(ENCRYPTED_MARKER)
         ? await parseCompletionEncrypted(event, (c) => decryptForCategory<MaintenanceCompletionData>(c))
-        : parseCompletionPlaintext(event);
+        : parseCompletionPlaintext(event) ?? parseCompletionDualPublishPlain(event);
       if (completion && !deletedIds.has(completion.id)) return completion;
       return null;
     }

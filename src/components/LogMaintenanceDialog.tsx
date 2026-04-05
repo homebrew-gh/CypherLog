@@ -30,6 +30,16 @@ function getTodayFormatted(): string {
   return format(new Date(), 'MM/dd/yyyy');
 }
 
+const RECEIPT_FILE_ACCEPT = 'image/*,application/pdf';
+
+function isAllowedReceiptFile(file: File): boolean {
+  if (file.type.startsWith('image/')) return true;
+  if (file.type === 'application/pdf') return true;
+  // Some pickers omit MIME; allow by extension
+  if (!file.type && /\.pdf$/i.test(file.name)) return true;
+  return false;
+}
+
 export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: LogMaintenanceDialogProps) {
   const { data: vehicles = [] } = useVehicles();
   const { formatForDisplay } = useCurrency();
@@ -136,7 +146,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
           toast({
             title: 'Private media server required',
             description:
-              'Add a private Blossom server in Settings → Server Settings → Media to attach receipt images.',
+              'Add a private Blossom server in Settings → Server Settings → Media to attach receipt files.',
             variant: 'destructive',
           });
           setIsSubmitting(false);
@@ -155,7 +165,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
           } else {
             toast({
               title: 'Upload failed',
-              description: err instanceof Error ? err.message : 'Could not upload receipt image.',
+              description: err instanceof Error ? err.message : 'Could not upload receipt file.',
               variant: 'destructive',
             });
           }
@@ -281,11 +291,11 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
             {!canUploadReceipt ? (
               <Alert className="border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/40">
                 <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                <AlertTitle className="text-sm text-sky-950 dark:text-sky-100">Receipt photo</AlertTitle>
+                <AlertTitle className="text-sm text-sky-950 dark:text-sky-100">Receipt attachment</AlertTitle>
                 <AlertDescription className="text-xs text-sky-900/90 dark:text-sky-200/90 space-y-2">
                   <p>
                     This app only uploads receipts to a Blossom server you mark as <strong>private</strong>. Until you
-                    add one, you will not see a photo picker here—that is expected.
+                    add one, you will not see a file picker here—that is expected.
                   </p>
                   <p>
                     <strong>Where to set it up:</strong> open the menu (☰) → <strong>Nostr Relays</strong> →{' '}
@@ -299,12 +309,24 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
                 <input
                   ref={receiptInputRef}
                   type="file"
-                  accept="image/*"
+                  accept={RECEIPT_FILE_ACCEPT}
                   className="sr-only"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    setReceiptFile(file ?? null);
                     e.target.value = '';
+                    if (!file) {
+                      setReceiptFile(null);
+                      return;
+                    }
+                    if (!isAllowedReceiptFile(file)) {
+                      toast({
+                        title: 'Unsupported file type',
+                        description: 'Choose a photo (JPEG, PNG, etc.) or a PDF receipt.',
+                        variant: 'destructive',
+                      });
+                      return;
+                    }
+                    setReceiptFile(file);
                   }}
                 />
                 {receiptFile ? (
@@ -329,7 +351,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
                     onClick={() => receiptInputRef.current?.click()}
                   >
                     <ImagePlus className="h-4 w-4 mr-2" />
-                    Choose receipt image
+                    Choose receipt (image or PDF)
                   </Button>
                 )}
               </div>

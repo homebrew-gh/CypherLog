@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { Car, Gauge, Wrench, Plus, X, Package, Building2, Receipt, ImagePlus, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -50,6 +50,26 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
   const { mutateAsync: uploadFile } = useUploadFile();
   const canUploadReceipt = useCanUploadFiles();
   const receiptInputRef = useRef<HTMLInputElement>(null);
+  /** Radix Dialog often calls onOpenChange(false) when the native file picker returns (focus/pointer quirks). */
+  const blockDialogCloseForFilePickerRef = useRef(false);
+  const filePickerGuardTimeoutRef = useRef<number | null>(null);
+
+  const clearFilePickerDialogGuard = useCallback(() => {
+    blockDialogCloseForFilePickerRef.current = false;
+    if (filePickerGuardTimeoutRef.current != null) {
+      window.clearTimeout(filePickerGuardTimeoutRef.current);
+      filePickerGuardTimeoutRef.current = null;
+    }
+  }, []);
+
+  const openReceiptFilePicker = useCallback(() => {
+    blockDialogCloseForFilePickerRef.current = true;
+    if (filePickerGuardTimeoutRef.current != null) {
+      window.clearTimeout(filePickerGuardTimeoutRef.current);
+    }
+    filePickerGuardTimeoutRef.current = window.setTimeout(clearFilePickerDialogGuard, 60_000);
+    receiptInputRef.current?.click();
+  }, [clearFilePickerDialogGuard]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -86,6 +106,28 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
       setReceiptFile(null);
     }
   }, [isOpen, preselectedVehicleId]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      clearFilePickerDialogGuard();
+      return;
+    }
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      window.setTimeout(() => clearFilePickerDialogGuard(), 400);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [isOpen, clearFilePickerDialogGuard]);
+
+  useEffect(() => {
+    if (!isOpen || !canUploadReceipt) return;
+    const el = receiptInputRef.current;
+    if (!el) return;
+    const onPickerCancel = () => clearFilePickerDialogGuard();
+    el.addEventListener('cancel', onPickerCancel);
+    return () => el.removeEventListener('cancel', onPickerCancel);
+  }, [isOpen, canUploadReceipt, clearFilePickerDialogGuard]);
 
   const handleAddPart = () => {
     if (!newPart.name.trim()) {
@@ -226,7 +268,12 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
     <Dialog
       open={isOpen}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) {
+          if (blockDialogCloseForFilePickerRef.current) {
+            return;
+          }
+          onClose();
+        }
       }}
     >
       <DialogContent
@@ -236,6 +283,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
         // "back" as if they left the flow. Keep the modal open; use Cancel or the X to close.
         onPointerDownOutside={(e) => e.preventDefault()}
         onFocusOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -324,6 +372,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
                   accept={RECEIPT_FILE_ACCEPT}
                   className="sr-only"
                   onChange={(e) => {
+                    clearFilePickerDialogGuard();
                     const file = e.target.files?.[0];
                     e.target.value = '';
                     if (!file) {
@@ -360,7 +409,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
                     variant="outline"
                     size="sm"
                     className="w-full sm:w-auto"
-                    onClick={() => receiptInputRef.current?.click()}
+                    onClick={openReceiptFilePicker}
                   >
                     <ImagePlus className="h-4 w-4 mr-2" />
                     Choose receipt (image or PDF)

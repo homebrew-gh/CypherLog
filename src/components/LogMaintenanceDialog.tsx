@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
 import { Car, Gauge, Wrench, Plus, X, Package, Building2, Receipt, ImagePlus, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +18,7 @@ import { useUploadFile, useCanUploadFiles, NoPrivateServerError } from '@/hooks/
 import { toast } from '@/hooks/useToast';
 import { uploadTagsToImetaRow } from '@/lib/maintenanceReceipt';
 import { useCapacitorAndroid } from '@/hooks/useCapacitorAndroid';
+import { ReceiptPicker } from '@/lib/capacitor/receiptPickerPlugin';
 import type { MaintenancePart } from '@/lib/types';
 
 interface LogMaintenanceDialogProps {
@@ -42,6 +42,17 @@ function isAllowedReceiptFile(file: File): boolean {
   return false;
 }
 
+function base64ToFile(base64: string, name: string, mimeType: string): File {
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new File([bytes], name || 'receipt', {
+    type: mimeType || 'application/octet-stream',
+  });
+}
+
 export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: LogMaintenanceDialogProps) {
   const { data: vehicles = [] } = useVehicles();
   const { formatForDisplay } = useCurrency();
@@ -56,6 +67,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
   const isAndroidApp = useCapacitorAndroid();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPickingReceipt, setIsPickingReceipt] = useState(false);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
 
   const [formData, setFormData] = useState({
@@ -109,6 +121,39 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
       return;
     }
     setReceiptFile(file);
+  };
+
+  const handleChooseReceipt = async () => {
+    if (isAndroidApp) {
+      setIsPickingReceipt(true);
+      try {
+        const picked = await ReceiptPicker.pickReceipt();
+        const file = base64ToFile(picked.base64, picked.name, picked.mimeType);
+        if (!isAllowedReceiptFile(file)) {
+          toast({
+            title: 'Unsupported file type',
+            description: 'Choose a photo (JPEG, PNG, etc.) or a PDF receipt.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        setReceiptFile(file);
+      } catch (err) {
+        const message = err instanceof Error ? err.message.toLowerCase() : '';
+        if (!message.includes('cancel')) {
+          toast({
+            title: 'Could not open receipt picker',
+            description: err instanceof Error ? err.message : 'Please try again.',
+            variant: 'destructive',
+          });
+        }
+      } finally {
+        setIsPickingReceipt(false);
+      }
+      return;
+    }
+
+    receiptInputRef.current?.click();
   };
 
   const handleAddPart = () => {
@@ -246,26 +291,20 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
     }
   };
 
-  const receiptFileInput =
-    typeof document !== 'undefined' ? (
+  return (
+    <>
+    {!isAndroidApp && (
       <input
         ref={receiptInputRef}
         type="file"
         accept={RECEIPT_FILE_ACCEPT}
-        className="sr-only fixed left-0 top-0 -z-50 h-px w-px opacity-0"
-        aria-hidden
+        className="sr-only"
         tabIndex={-1}
         onChange={handleReceiptChange}
       />
-    ) : null;
+    )}
 
-  return (
-    <>
-    {/* Portal to body + non-modal Dialog: Radix still treats WebView file-picker
-        focus loss as "dismiss" unless outside events are prevented and modal trap is off. */}
-    {receiptFileInput ? createPortal(receiptFileInput, document.body) : null}
-
-    <Dialog modal={false} open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
         className="max-w-[95vw] sm:max-w-lg max-h-[90dvh] overflow-y-auto"
         onPointerDownOutside={(e) => e.preventDefault()}
@@ -375,10 +414,11 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
                     variant="outline"
                     size="sm"
                     className="w-full sm:w-auto"
-                    onClick={() => receiptInputRef.current?.click()}
+                    onClick={handleChooseReceipt}
+                    disabled={isPickingReceipt}
                   >
                     <ImagePlus className="h-4 w-4 mr-2" />
-                    Choose receipt (image or PDF)
+                    {isPickingReceipt ? 'Opening picker...' : 'Choose receipt (image or PDF)'}
                   </Button>
                 )}
               </div>

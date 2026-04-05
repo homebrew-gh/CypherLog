@@ -39,10 +39,18 @@ public class AmberSignerPlugin extends Plugin {
   @PluginMethod
   public void getPublicKey(PluginCall call) {
     String permissionsJson = call.getString("permissionsJson", "[]");
-    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("nostrsigner:"));
-    intent.putExtra("type", "get_public_key");
-    intent.putExtra("permissions", permissionsJson);
-    startActivityForResult(call, intent, "getPublicKeyResult");
+    try {
+      Uri uri = buildSignerUri(null, new String[][] {
+        {"type", "get_public_key"},
+        {"permissions", permissionsJson}
+      });
+      Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+      intent.putExtra("type", "get_public_key");
+      intent.putExtra("permissions", permissionsJson);
+      startActivityForResult(call, intent, "getPublicKeyResult");
+    } catch (Exception e) {
+      call.reject("intent_failed", e.getMessage(), e);
+    }
   }
 
   @ActivityCallback
@@ -83,7 +91,11 @@ public class AmberSignerPlugin extends Plugin {
     }
     try {
       String encoded = URLEncoder.encode(eventJson, StandardCharsets.UTF_8.name()).replace("+", "%20");
-      Uri uri = Uri.parse("nostrsigner:" + encoded);
+      Uri uri = buildSignerUri(encoded, new String[][] {
+        {"type", "sign_event"},
+        {"id", requestId},
+        {"current_user", pubkey}
+      });
       Intent intent = new Intent(Intent.ACTION_VIEW, uri);
       intent.setPackage(signerPackage);
       intent.putExtra("type", "sign_event");
@@ -155,7 +167,15 @@ public class AmberSignerPlugin extends Plugin {
     }
     try {
       String encoded = URLEncoder.encode(payload, StandardCharsets.UTF_8.name()).replace("+", "%20");
-      Uri uri = Uri.parse("nostrsigner:" + encoded);
+      String payloadQueryKey = type.endsWith("_encrypt") ? "plainText" : "encryptedText";
+      Uri uri = buildSignerUri(encoded, new String[][] {
+        {"type", type},
+        {"id", requestId},
+        {"current_user", pubkey},
+        {"pubkey", peerPubkey},
+        {"pubKey", peerPubkey},
+        {payloadQueryKey, payload}
+      });
       Intent intent = new Intent(Intent.ACTION_VIEW, uri);
       intent.setPackage(signerPackage);
       intent.putExtra("type", type);
@@ -167,6 +187,29 @@ public class AmberSignerPlugin extends Plugin {
     } catch (Exception e) {
       call.reject("intent_failed", e.getMessage(), e);
     }
+  }
+
+  private Uri buildSignerUri(String encodedPayload, String[][] queryParams) throws Exception {
+    StringBuilder uri = new StringBuilder("nostrsigner:");
+    if (encodedPayload != null) {
+      uri.append(encodedPayload);
+    }
+    boolean isFirstParam = true;
+    for (String[] queryParam : queryParams) {
+      if (queryParam == null || queryParam.length < 2 || queryParam[1] == null) {
+        continue;
+      }
+      uri.append(isFirstParam ? "?" : "&");
+      isFirstParam = false;
+      uri.append(queryParam[0]);
+      uri.append("=");
+      uri.append(encodeQueryValue(queryParam[1]));
+    }
+    return Uri.parse(uri.toString());
+  }
+
+  private String encodeQueryValue(String value) throws Exception {
+    return URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20");
   }
 
   private void resolveCryptoResult(PluginCall call, ActivityResult result) {

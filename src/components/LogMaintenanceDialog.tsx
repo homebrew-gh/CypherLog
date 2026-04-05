@@ -223,8 +223,20 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[90dvh] overflow-y-auto">
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        className="max-w-[95vw] sm:max-w-lg max-h-[90dvh] overflow-y-auto"
+        // Native file pickers (Android WebView / Capacitor) steal focus; when they return,
+        // Radix often treats that as an "outside" dismiss and closes the dialog — send user
+        // "back" as if they left the flow. Keep the modal open; use Cancel or the X to close.
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onFocusOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-5 w-5 text-primary" />

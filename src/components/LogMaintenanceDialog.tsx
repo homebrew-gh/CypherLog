@@ -54,11 +54,18 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
   const blockDialogCloseForFilePickerRef = useRef(false);
   const filePickerGuardTimeoutRef = useRef<number | null>(null);
 
-  const clearFilePickerDialogGuard = useCallback(() => {
-    blockDialogCloseForFilePickerRef.current = false;
+  const clearFilePickerDialogGuard = useCallback((delayMs = 0) => {
     if (filePickerGuardTimeoutRef.current != null) {
       window.clearTimeout(filePickerGuardTimeoutRef.current);
       filePickerGuardTimeoutRef.current = null;
+    }
+    if (delayMs <= 0) {
+      blockDialogCloseForFilePickerRef.current = false;
+    } else {
+      filePickerGuardTimeoutRef.current = window.setTimeout(() => {
+        blockDialogCloseForFilePickerRef.current = false;
+        filePickerGuardTimeoutRef.current = null;
+      }, delayMs);
     }
   }, []);
 
@@ -109,12 +116,13 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
 
   useEffect(() => {
     if (!isOpen) {
-      clearFilePickerDialogGuard();
+      clearFilePickerDialogGuard(0);
       return;
     }
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
-      window.setTimeout(() => clearFilePickerDialogGuard(), 400);
+      // Delay so any Radix dismiss events that fire on re-focus are still blocked.
+      clearFilePickerDialogGuard(800);
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
@@ -124,7 +132,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
     if (!isOpen || !canUploadReceipt) return;
     const el = receiptInputRef.current;
     if (!el) return;
-    const onPickerCancel = () => clearFilePickerDialogGuard();
+    const onPickerCancel = () => clearFilePickerDialogGuard(800);
     el.addEventListener('cancel', onPickerCancel);
     return () => el.removeEventListener('cancel', onPickerCancel);
   }, [isOpen, canUploadReceipt, clearFilePickerDialogGuard]);
@@ -284,6 +292,9 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
         onPointerDownOutside={(e) => e.preventDefault()}
         onFocusOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => {
+          if (blockDialogCloseForFilePickerRef.current) e.preventDefault();
+        }}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -372,9 +383,12 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
                   accept={RECEIPT_FILE_ACCEPT}
                   className="sr-only"
                   onChange={(e) => {
-                    clearFilePickerDialogGuard();
                     const file = e.target.files?.[0];
                     e.target.value = '';
+                    // Delay clearing the guard so Radix dismiss events that fire
+                    // in the same tick (focus returning from native file picker)
+                    // are still blocked.
+                    clearFilePickerDialogGuard(800);
                     if (!file) {
                       setReceiptFile(null);
                       return;

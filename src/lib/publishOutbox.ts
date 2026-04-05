@@ -2,6 +2,11 @@
  * Persistent publish outbox: signed events are stored in IndexedDB and flushed
  * per relay until every target relay has accepted the event (unlike NPool.event,
  * which succeeds if any relay accepts).
+ *
+ * By default `publishEventThroughOutbox` only enqueues and kicks a background flush;
+ * the UI should treat the local event cache as source of truth and rely on
+ * `PublishOutboxManager` (and retries) for delivery. Use `waitUntilDelivered: true`
+ * when you must block until relays accept (e.g. no IndexedDB fallback).
  */
 
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -328,11 +333,15 @@ export async function publishEventThroughOutbox(
   nostr: OutboxNostr,
   event: NostrEvent,
   relayUrls: string[],
-  options?: { signal?: AbortSignal; jobTimeoutMs?: number }
+  options?: { signal?: AbortSignal; jobTimeoutMs?: number; waitUntilDelivered?: boolean }
 ): Promise<void> {
   const urls = uniqueRelayUrls(relayUrls);
   if (urls.length === 0) {
     throw new Error('No write relays configured for publish');
+  }
+
+  if (options?.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
   }
 
   if (!isPublishOutboxSupported()) {
@@ -343,6 +352,14 @@ export async function publishEventThroughOutbox(
   const jobId = await enqueuePublishJob(event, urls);
   if (!jobId) {
     throw new Error('Failed to enqueue publish job');
+  }
+
+  void flushPublishOutbox(nostr).catch((e) =>
+    logger.warn('[PublishOutbox] Flush after enqueue failed:', e)
+  );
+
+  if (options?.waitUntilDelivered !== true) {
+    return;
   }
 
   const jobTimeoutMs = options?.jobTimeoutMs ?? DEFAULT_JOB_TIMEOUT_MS;

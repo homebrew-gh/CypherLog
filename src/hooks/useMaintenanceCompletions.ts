@@ -267,9 +267,6 @@ export function useMaintenanceCompletionActions() {
       await cacheEvents([event]);
     }
 
-    // Small delay to allow the event to propagate
-    await new Promise(resolve => setTimeout(resolve, 500));
-
     await queryClient.refetchQueries({ queryKey: ['maintenance-completions'] });
   };
 
@@ -311,7 +308,6 @@ export function useMaintenanceCompletionActions() {
       await deleteCachedEventById(id);
     }
 
-    await new Promise(resolve => setTimeout(resolve, 500));
     await queryClient.refetchQueries({ queryKey: ['maintenance-completions'] });
   };
 

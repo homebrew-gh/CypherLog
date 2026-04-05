@@ -68,6 +68,8 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
   const isAndroidApp = useCapacitorAndroid();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** Shown while isSubmitting: upload runs before Nostr publishes (each publish waits on all write relays). */
+  const [submitStep, setSubmitStep] = useState<'upload' | 'save' | null>(null);
   const [isPickingReceipt, setIsPickingReceipt] = useState(false);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
 
@@ -209,6 +211,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
     }
 
     setIsSubmitting(true);
+    setSubmitStep(receiptFile ? 'upload' : 'save');
     try {
       let receiptImetaRow: string[] | undefined;
       if (receiptFile) {
@@ -220,11 +223,13 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
             variant: 'destructive',
           });
           setIsSubmitting(false);
+          setSubmitStep(null);
           return;
         }
         try {
           const uploadTags = await uploadFile(receiptFile);
           receiptImetaRow = uploadTagsToImetaRow(uploadTags);
+          setSubmitStep('save');
         } catch (err) {
           if (err instanceof NoPrivateServerError) {
             toast({
@@ -240,6 +245,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
             });
           }
           setIsSubmitting(false);
+          setSubmitStep(null);
           return;
         }
       }
@@ -289,6 +295,7 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
       });
     } finally {
       setIsSubmitting(false);
+      setSubmitStep(null);
     }
   };
 
@@ -598,7 +605,11 @@ export function LogMaintenanceDialog({ isOpen, onClose, preselectedVehicleId }: 
             onClick={handleSubmit} 
             disabled={isSubmitting || vehicles.length === 0}
           >
-            {isSubmitting ? 'Saving...' : 'Log Maintenance'}
+            {isSubmitting
+              ? submitStep === 'upload'
+                ? 'Uploading receipt...'
+                : 'Saving & syncing...'
+              : 'Log Maintenance'}
           </Button>
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancel

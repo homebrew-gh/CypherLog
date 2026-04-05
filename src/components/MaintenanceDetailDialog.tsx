@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Clock, Package, Wrench, Edit, Trash2, AlertTriangle, CheckCircle, Check, Car, Gauge, TreePine, ClipboardList, Plus, X, Calendar } from 'lucide-react';
+import { Clock, Package, Wrench, Edit, Trash2, AlertTriangle, CheckCircle, Check, Car, Gauge, TreePine, ClipboardList, Plus, X, Calendar, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { MaintenanceReceiptThumb } from '@/components/MaintenanceReceiptThumb';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { DateInput } from '@/components/ui/date-input';
@@ -209,7 +211,7 @@ export function MaintenanceDetailDialog({ isOpen, onClose, maintenance, onEdit }
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-[95vw] sm:max-w-md">
+        <DialogContent className="max-w-[95vw] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 flex-wrap">
               {isLogOnly ? (
@@ -410,6 +412,68 @@ export function MaintenanceDetailDialog({ isOpen, onClose, maintenance, onEdit }
                     {lastCompletionDate || 'No records yet'}
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* Past completions: dates, parts, mileage, receipt links (same data as vehicle/appliance maintenance pages) */}
+            {completions.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  Completion history
+                </p>
+                <ScrollArea className="max-h-[min(280px,45vh)] pr-3">
+                  <div className="space-y-2">
+                    {completions.map((completion) => (
+                      <div
+                        key={completion.id}
+                        className="p-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 text-sm"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <span className="font-medium text-green-900 dark:text-green-100">Completed</span>
+                          <span className="text-xs font-medium text-green-800 dark:text-green-200 shrink-0">
+                            {completion.completedDate}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-green-800 dark:text-green-300">
+                          {isVehicleMaintenance && completion.mileageAtCompletion && (
+                            <span className="flex items-center gap-1">
+                              <Gauge className="h-3 w-3 shrink-0" />
+                              {Number(completion.mileageAtCompletion).toLocaleString()} mi
+                            </span>
+                          )}
+                          {completion.parts && completion.parts.length > 0 && (
+                            <span className="flex items-center gap-1">
+                              <Package className="h-3 w-3 shrink-0" />
+                              {completion.parts.length} part{completion.parts.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                        {completion.parts && completion.parts.length > 0 && (
+                          <ul className="mt-2 space-y-1 text-xs text-green-900/90 dark:text-green-100/90">
+                            {completion.parts.map((part, idx) => (
+                              <li key={idx}>
+                                <span className="font-medium">{part.name}</span>
+                                {(part.partNumber || part.cost) && (
+                                  <span className="text-muted-foreground">
+                                    {part.partNumber ? ` · #${part.partNumber}` : ''}
+                                    {part.cost ? ` · ${formatForDisplay(part.cost)}` : ''}
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {completion.notes && (
+                          <p className="text-xs text-green-700 dark:text-green-400 mt-2 whitespace-pre-wrap">
+                            {completion.notes}
+                          </p>
+                        )}
+                        <MaintenanceReceiptThumb completion={completion} compact={false} className="mt-2" />
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
               </div>
             )}
 

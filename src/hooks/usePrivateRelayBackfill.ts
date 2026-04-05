@@ -138,6 +138,7 @@ export function usePrivateRelayBackfill() {
               if (!isPublishOutboxSupported()) {
                 await publishEventThroughOutbox(pool, plainEvent, privateRelayUrls, {
                   jobTimeoutMs: 60_000,
+                  waitUntilDelivered: true,
                 });
                 return null;
               }

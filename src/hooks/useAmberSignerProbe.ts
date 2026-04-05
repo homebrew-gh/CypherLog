@@ -97,6 +97,19 @@ async function runAmberProbe(user: AmberCapableUser): Promise<AmberSignerProbeRe
   }
 
   if (decrypted !== plaintext) {
+    // Amber's IntentUtils returns this string on decrypt failure instead of rejecting the intent.
+    if (decrypted === 'Could not decrypt the message') {
+      return {
+        status: 'failed',
+        code: 'nip44_decrypt_failed',
+        message: describeFailure(
+          'nip44_decrypt_failed',
+          new Error(
+            'Amber responded with its generic decrypt-failure text. Install the latest Cypher Log Android build — older APKs sent NIP-44 data in a way Amber parsed incorrectly.',
+          ),
+        ),
+      };
+    }
     return {
       status: 'failed',
       code: 'nip44_roundtrip_mismatch',

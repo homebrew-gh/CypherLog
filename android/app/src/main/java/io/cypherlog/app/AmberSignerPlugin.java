@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
+import android.provider.Browser;
 
 import androidx.activity.result.ActivityResult;
 
@@ -25,6 +26,18 @@ import java.util.UUID;
  */
 @CapacitorPlugin(name = "AmberSigner")
 public class AmberSignerPlugin extends Plugin {
+
+  /**
+   * Amber branches on {@link Browser#EXTRA_APPLICATION_ID}: when it is absent, Amber parses
+   * nostrsigner: URIs via {@code getIntentDataFromIntent} and passes the full decoded string
+   * (payload plus {@code ?type=...} query) into NIP-44 encrypt/decrypt. That breaks self-encrypt
+   * round-trips and often yields the generic string {@code Could not decrypt the message}.
+   * Setting this extra forces {@code getIntentDataWithoutExtras}, which splits the payload at the
+   * first {@code '?'} correctly.
+   */
+  private void attachAmberUriPayloadFix(Intent intent) {
+    intent.putExtra(Browser.EXTRA_APPLICATION_ID, getContext().getPackageName());
+  }
 
   @PluginMethod
   public void isAvailable(PluginCall call) {
@@ -47,6 +60,7 @@ public class AmberSignerPlugin extends Plugin {
       Intent intent = new Intent(Intent.ACTION_VIEW, uri);
       intent.putExtra("type", "get_public_key");
       intent.putExtra("permissions", permissionsJson);
+      attachAmberUriPayloadFix(intent);
       startActivityForResult(call, intent, "getPublicKeyResult");
     } catch (Exception e) {
       call.reject("intent_failed", e.getMessage(), e);
@@ -102,6 +116,7 @@ public class AmberSignerPlugin extends Plugin {
       intent.putExtra("id", requestId);
       intent.putExtra("current_user", pubkey);
       intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+      attachAmberUriPayloadFix(intent);
       startActivityForResult(call, intent, "signEventResult");
     } catch (Exception e) {
       call.reject("intent_failed", e.getMessage(), e);
@@ -183,6 +198,7 @@ public class AmberSignerPlugin extends Plugin {
       intent.putExtra("current_user", pubkey);
       intent.putExtra("pubkey", peerPubkey);
       intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+      attachAmberUriPayloadFix(intent);
       startActivityForResult(call, intent, callbackName);
     } catch (Exception e) {
       call.reject("intent_failed", e.getMessage(), e);

@@ -861,37 +861,42 @@ export function ProjectPage() {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md border-b border-border">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" asChild>
+          <div className="flex items-start gap-3 sm:gap-4">
+            <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" asChild>
               <Link to="/?tab=projects">
                 <ArrowLeft className="h-5 w-5" />
               </Link>
             </Button>
-            <div className="flex-1">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <FolderKanban className="h-6 w-6 text-primary" />
+            <div className="flex-1 min-w-0 flex flex-col gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="text-lg sm:text-xl font-bold truncate min-w-0 flex-1">
+                  {project.name}
+                </h1>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setShowEditDialog(true)}
+                >
+                  <Edit className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                <div className="p-1.5 sm:p-2 rounded-lg bg-primary/10 shrink-0">
+                  <FolderKanban className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-xl font-bold">{project.name}</h1>
-                    <Badge variant={getStatusVariant(project.status)}>
-                      <StatusIcon className="h-3 w-3 mr-1" />
-                      {getStatusText(project.status)}
-                    </Badge>
-                  </div>
-                  {project.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-1">
-                      {project.description}
-                    </p>
-                  )}
-                </div>
+                <Badge variant={getStatusVariant(project.status)} className="shrink-0">
+                  <StatusIcon className="h-3 w-3 mr-1" />
+                  {getStatusText(project.status)}
+                </Badge>
+                {project.description && (
+                  <p className="text-sm text-muted-foreground line-clamp-2 sm:line-clamp-1 w-full sm:w-auto sm:flex-1 sm:min-w-0">
+                    {project.description}
+                  </p>
+                )}
               </div>
             </div>
-            <Button variant="outline" onClick={() => setShowEditDialog(true)}>
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
           </div>
         </div>
       </header>

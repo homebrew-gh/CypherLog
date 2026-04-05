@@ -60,31 +60,31 @@ export function BudgetTracker({ projectId, originalBudget }: BudgetTrackerProps)
       </CardHeader>
       <CardContent className="space-y-6 budget-tracker">
         {/* Main Stats - use class for PWA-only layout overrides in index.css */}
-        <div className="budget-tracker-stats grid grid-cols-3 gap-4">
+        <div className="budget-tracker-stats grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           {/* Total Actual (Spent) */}
-          <div className="text-center p-4 rounded-lg bg-muted/50 min-w-0">
+          <div className="text-left sm:text-center p-4 rounded-lg bg-muted/50 min-w-0">
             <p className="text-sm text-muted-foreground mb-1">Actual (Spent)</p>
-            <p className={`budget-tracker-value text-2xl font-bold truncate ${isOverBudget ? 'text-destructive' : 'text-foreground'}`} title={formatForDisplay(totalActual)}>
+            <p className={`budget-tracker-value text-xl sm:text-2xl font-bold tabular-nums break-words sm:truncate ${isOverBudget ? 'text-destructive' : 'text-foreground'}`} title={formatForDisplay(totalActual)}>
               {formatForDisplay(totalActual)}
             </p>
           </div>
 
           {/* Estimated (Planned) / Budget */}
-          <div className="text-center p-4 rounded-lg bg-muted/50 min-w-0">
+          <div className="text-left sm:text-center p-4 rounded-lg bg-muted/50 min-w-0">
             <p className="text-sm text-muted-foreground mb-1">
               {hasBudget ? 'Budget' : 'Estimated'}
             </p>
-            <p className="budget-tracker-value text-2xl font-bold text-foreground truncate" title={formatForDisplay(hasBudget ? budgetAmount : totalEstimated)}>
+            <p className="budget-tracker-value text-xl sm:text-2xl font-bold tabular-nums break-words sm:truncate text-foreground" title={formatForDisplay(hasBudget ? budgetAmount : totalEstimated)}>
               {formatForDisplay(hasBudget ? budgetAmount : totalEstimated)}
             </p>
           </div>
 
           {/* Remaining / Variance / To Spend */}
-          <div className="text-center p-4 rounded-lg bg-muted/50 min-w-0">
+          <div className="text-left sm:text-center p-4 rounded-lg bg-muted/50 min-w-0">
             <p className="text-sm text-muted-foreground mb-1">
               {hasBudget ? 'Remaining' : hasVariance ? 'Variance' : 'To Spend'}
             </p>
-            <p className={`budget-tracker-value text-2xl font-bold flex items-center justify-center gap-1 min-w-0 ${
+            <p className={`budget-tracker-value text-xl sm:text-2xl font-bold tabular-nums flex flex-wrap sm:flex-nowrap items-center gap-1 min-w-0 sm:justify-center ${
               hasBudget
                 ? isOverBudget ? 'text-destructive' : 'text-green-600'
                 : hasVariance
@@ -96,15 +96,15 @@ export function BudgetTracker({ projectId, originalBudget }: BudgetTrackerProps)
               {hasBudget ? (
                 <>
                   <span className="shrink-0">{isOverBudget ? <TrendingDown className="h-5 w-5" /> : <TrendingUp className="h-5 w-5" />}</span>
-                  <span className="truncate">{formatForDisplay(Math.abs(remaining))}</span>
+                  <span className="min-w-0 break-words sm:truncate">{formatForDisplay(Math.abs(remaining))}</span>
                 </>
               ) : hasVariance ? (
                 <>
                   <span className="shrink-0">{variance > 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}</span>
-                  <span className="truncate">{formatForDisplay(Math.abs(variance))} {variance > 0 ? 'under' : 'over'}</span>
+                  <span className="min-w-0 break-words sm:truncate">{formatForDisplay(Math.abs(variance))} {variance > 0 ? 'under' : 'over'}</span>
                 </>
               ) : (
-                <span className="truncate">{formatForDisplay(totalEstimated - totalActual)}</span>
+                <span className="min-w-0 break-words sm:truncate">{formatForDisplay(totalEstimated - totalActual)}</span>
               )}
             </p>
           </div>

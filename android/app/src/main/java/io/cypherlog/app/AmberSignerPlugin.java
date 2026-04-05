@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.database.Cursor;
 import android.net.Uri;
 import android.provider.Browser;
 
@@ -52,6 +53,65 @@ public class AmberSignerPlugin extends Plugin {
     Activity activity = getActivity();
     if (activity != null) {
       activity.overridePendingTransition(0, 0);
+    }
+  }
+
+  private Cursor querySignerProvider(String signerPackage, String capability, String[] projection) {
+    try {
+      Uri uri = Uri.parse("content://" + signerPackage + "." + capability);
+      return getContext().getContentResolver().query(uri, projection, null, null, null);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private boolean isProviderRejected(Cursor cursor) {
+    return cursor.getColumnIndex("rejected") >= 0;
+  }
+
+  private String getCursorString(Cursor cursor, String columnName) {
+    int idx = cursor.getColumnIndex(columnName);
+    if (idx < 0) return null;
+    return cursor.getString(idx);
+  }
+
+  private JSObject trySignViaContentResolver(String signerPackage, String eventJson, String pubkey) {
+    try (Cursor cursor = querySignerProvider(signerPackage, "SIGN_EVENT", new String[] { eventJson, "", pubkey })) {
+      if (cursor == null || isProviderRejected(cursor) || !cursor.moveToFirst()) {
+        return null;
+      }
+      String signedEventJson = getCursorString(cursor, "event");
+      if (signedEventJson == null || signedEventJson.isEmpty()) {
+        signedEventJson = getCursorString(cursor, "result");
+      }
+      if (signedEventJson == null || signedEventJson.isEmpty()) {
+        return null;
+      }
+      JSObject ret = new JSObject();
+      ret.put("eventJson", signedEventJson);
+      return ret;
+    }
+  }
+
+  private String tryCryptoViaContentResolver(String signerPackage, String type, String payload, String peerPubkey, String pubkey) {
+    String capability;
+    if ("nip44_encrypt".equals(type)) {
+      capability = "NIP44_ENCRYPT";
+    } else if ("nip44_decrypt".equals(type)) {
+      capability = "NIP44_DECRYPT";
+    } else {
+      return null;
+    }
+
+    try (Cursor cursor = querySignerProvider(signerPackage, capability, new String[] { payload, peerPubkey, pubkey })) {
+      if (cursor == null || isProviderRejected(cursor) || !cursor.moveToFirst()) {
+        return null;
+      }
+      String result = getCursorString(cursor, "result");
+      if (result == null || result.isEmpty()) {
+        result = getCursorString(cursor, "signature");
+      }
+      return (result == null || result.isEmpty()) ? null : result;
     }
   }
 
@@ -122,6 +182,13 @@ public class AmberSignerPlugin extends Plugin {
       call.reject("invalid_args", "eventJson, signerPackage, and pubkey are required");
       return;
     }
+
+    JSObject providerResult = trySignViaContentResolver(signerPackage, eventJson, pubkey);
+    if (providerResult != null) {
+      call.resolve(providerResult);
+      return;
+    }
+
     try {
       String encoded = URLEncoder.encode(eventJson, StandardCharsets.UTF_8.name()).replace("+", "%20");
       Uri uri = buildSignerUri(encoded, new String[][] {
@@ -202,6 +269,15 @@ public class AmberSignerPlugin extends Plugin {
       call.reject("invalid_args", "payload, signerPackage, pubkey, and peerPubkey are required");
       return;
     }
+
+    String providerResult = tryCryptoViaContentResolver(signerPackage, type, payload, peerPubkey, pubkey);
+    if (providerResult != null) {
+      JSObject ret = new JSObject();
+      ret.put("result", providerResult);
+      call.resolve(ret);
+      return;
+    }
+
     try {
       String encoded = URLEncoder.encode(payload, StandardCharsets.UTF_8.name()).replace("+", "%20");
       String payloadQueryKey = type.endsWith("_encrypt") ? "plainText" : "encryptedText";

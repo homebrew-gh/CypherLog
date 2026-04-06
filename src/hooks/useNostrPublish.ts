@@ -1,12 +1,9 @@
 import { useNostr } from "@nostrify/react";
 import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 
-import { useContext } from "react";
 import { useCurrentUser } from "./useCurrentUser";
 import { useAppContext } from "@/hooks/useAppContext";
-import { UserPreferencesContext } from "@/contexts/UserPreferencesContext";
 import { logger } from "@/lib/logger";
-import { isRelayUrlSecure } from "@/lib/relay";
 import type { OutboxNostr } from "@/lib/publishOutbox";
 import { publishEventThroughOutbox } from "@/lib/publishOutbox";
 
@@ -21,16 +18,16 @@ const CYPHERLOG_CLIENT_URL = "https://cypherlog.io";
 export type PublishEventInput = Omit<NostrEvent, 'id' | 'pubkey' | 'sig' | 'created_at' | 'tags'> & {
   created_at?: number;
   tags?: string[][];
-  /** When set and private relays exist: publish plain to private relays and encrypted to public relays */
-  dualPublish?: { plainContent: string };
 };
 
+/**
+ * Publish one signed event to all configured write relays (outbox enqueue + background flush).
+ * Callers pass either encrypted `content` + minimal tags or plaintext tag mode — never two variants.
+ */
 export function useNostrPublish(): UseMutationResult<NostrEvent, Error, PublishEventInput> {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
   const { config } = useAppContext();
-  const prefsContext = useContext(UserPreferencesContext);
-  const preferences = prefsContext?.preferences;
 
   return useMutation({
     mutationFn: async (t: PublishEventInput) => {
@@ -42,55 +39,13 @@ export function useNostrPublish(): UseMutationResult<NostrEvent, Error, PublishE
       }
       const created_at = t.created_at ?? Math.floor(Date.now() / 1000);
 
-      const privateRelayUrls = (preferences?.privateRelays ?? []).filter(isRelayUrlSecure);
-      const publicRelayUrls = config.relayMetadata.relays
-        .filter((r) => r.write && !privateRelayUrls.includes(r.url))
-        .map((r) => r.url);
-
       const allWriteRelayUrls = config.relayMetadata.relays.filter((r) => r.write).map((r) => r.url);
-
-      const { dualPublish } = t;
-      const encryptedContent = t.content ?? "";
 
       const pool = nostr as unknown as OutboxNostr;
 
-      if (dualPublish && privateRelayUrls.length > 0 && publicRelayUrls.length > 0) {
-        // Dual publish: plaintext to private relays, encrypted to public relays
-        const plainEvent = await user.signer.signEvent({
-          kind: t.kind,
-          content: dualPublish.plainContent,
-          tags,
-          created_at,
-        });
-        const encEvent = await user.signer.signEvent({
-          kind: t.kind,
-          content: encryptedContent,
-          tags,
-          created_at,
-        });
-        await Promise.all([
-          publishEventThroughOutbox(pool, plainEvent, privateRelayUrls),
-          publishEventThroughOutbox(pool, encEvent, publicRelayUrls),
-        ]);
-        return plainEvent;
-      }
-
-      if (dualPublish && privateRelayUrls.length > 0 && publicRelayUrls.length === 0) {
-        // Only private relays: publish plain only
-        const plainEvent = await user.signer.signEvent({
-          kind: t.kind,
-          content: dualPublish.plainContent,
-          tags,
-          created_at,
-        });
-        await publishEventThroughOutbox(pool, plainEvent, privateRelayUrls);
-        return plainEvent;
-      }
-
-      // Single publish to all write relays (explicit list so every relay must accept)
       const event = await user.signer.signEvent({
         kind: t.kind,
-        content: encryptedContent,
+        content: t.content ?? "",
         tags,
         created_at,
       });

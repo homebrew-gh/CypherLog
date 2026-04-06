@@ -24,7 +24,7 @@ In **NostrProvider**, the pool’s **reqRouter** sends reads to the private rela
 
 The private relay therefore receives:
 
-1. **Writes** – events you publish (dual publish: plaintext to private, encrypted to public).
+1. **Writes** – events you publish (one signed event per save to all configured write relays).
 2. **Owned-data reads** – only when the filter is `authors: [you]` and kinds are your app data kinds (see `lib/privateRelayKinds.ts`). This is what runs on first load after login and on manual page refresh.
 3. **Explicit private reads** – e.g. “Check” in Relay Configuration (pending-sync count), backfill, deletion sibling lookup.
 

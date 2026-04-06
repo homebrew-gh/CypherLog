@@ -418,10 +418,8 @@ export function useSubscriptionActions() {
     });
 
     let content = '';
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption && shouldEncrypt('subscriptions')) {
       content = await encryptForCategory('subscriptions', payload);
-      dualPublish = { plainContent: JSON.stringify(payload) };
     } else {
       content = JSON.stringify(payload);
     }
@@ -430,7 +428,6 @@ export function useSubscriptionActions() {
       kind: SUBSCRIPTION_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {
@@ -502,10 +499,8 @@ export function useSubscriptionActions() {
     });
 
     let content = '';
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption && shouldEncrypt('subscriptions')) {
       content = await encryptForCategory('subscriptions', payload);
-      dualPublish = { plainContent: JSON.stringify(payload) };
     } else {
       content = JSON.stringify(payload);
     }
@@ -514,7 +509,6 @@ export function useSubscriptionActions() {
       kind: SUBSCRIPTION_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {

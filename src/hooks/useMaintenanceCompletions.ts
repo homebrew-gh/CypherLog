@@ -259,7 +259,6 @@ export function useMaintenanceCompletionActions() {
     ];
 
     let content = '';
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption) {
       const payload: MaintenanceCompletionData = {
         completedDate,
@@ -272,7 +271,6 @@ export function useMaintenanceCompletionActions() {
         }),
       };
       content = await encryptForCategory('maintenance', payload);
-      dualPublish = { plainContent: JSON.stringify(payload) };
     } else {
       tags.push(['completed_date', completedDate]);
       if (mileageAtCompletion) tags.push(['mileage_at_completion', mileageAtCompletion]);
@@ -294,7 +292,6 @@ export function useMaintenanceCompletionActions() {
       kind: MAINTENANCE_COMPLETION_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {

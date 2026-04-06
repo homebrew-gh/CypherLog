@@ -210,11 +210,9 @@ export function useProjectResearchActions() {
     ];
 
     let content = '';
-    let dualPublish: { plainContent: string } | undefined;
 
     if (useEncryption && shouldEncrypt('projects')) {
       content = await encryptForCategory('projects', data);
-      dualPublish = { plainContent: JSON.stringify(data) };
     } else {
       tags.push(['description', data.description]);
       tags.push(['content_text', data.content]);
@@ -230,7 +228,6 @@ export function useProjectResearchActions() {
       kind: PROJECT_RESEARCH_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) await cacheEvents([event]);

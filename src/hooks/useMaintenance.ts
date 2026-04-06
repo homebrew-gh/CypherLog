@@ -430,7 +430,6 @@ export function useMaintenanceActions() {
     }
 
     let content = '';
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption) {
       const payload: MaintenanceScheduleData = {
         description: data.description,
@@ -445,7 +444,6 @@ export function useMaintenanceActions() {
         isArchived: data.isArchived,
       };
       content = await encryptForCategory('maintenance', payload);
-      dualPublish = { plainContent: JSON.stringify(payload) };
     } else {
       tags.push(['description', data.description]);
       if (!data.isLogOnly && data.frequency != null && data.frequencyUnit) {
@@ -474,7 +472,6 @@ export function useMaintenanceActions() {
       kind: MAINTENANCE_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {
@@ -511,7 +508,6 @@ export function useMaintenanceActions() {
     }
 
     let content = '';
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption) {
       const payload: MaintenanceScheduleData = {
         description: data.description,
@@ -526,7 +522,6 @@ export function useMaintenanceActions() {
         isArchived: data.isArchived,
       };
       content = await encryptForCategory('maintenance', payload);
-      dualPublish = { plainContent: JSON.stringify(payload) };
     } else {
       tags.push(['description', data.description]);
       if (!data.isLogOnly && data.frequency != null && data.frequencyUnit) {
@@ -555,7 +550,6 @@ export function useMaintenanceActions() {
       kind: MAINTENANCE_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {

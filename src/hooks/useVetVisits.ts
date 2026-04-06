@@ -220,12 +220,10 @@ export function useVetVisitActions() {
     ];
 
     let content = '';
-    let dualPublish: { plainContent: string } | undefined;
 
     if (useEncryption && shouldEncrypt('pets')) {
       const payload = { petId, ...data };
       content = await encryptForCategory('pets', payload);
-      dualPublish = { plainContent: JSON.stringify(payload) };
     } else {
       // Store data in plaintext tags
       tags.push(['visit_date', data.visitDate]);
@@ -261,7 +259,6 @@ export function useVetVisitActions() {
       kind: VET_VISIT_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {

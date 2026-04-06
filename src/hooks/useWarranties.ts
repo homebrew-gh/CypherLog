@@ -293,10 +293,8 @@ export function useWarrantyActions() {
 
     let content = '';
 
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption && shouldEncrypt('warranties')) {
       content = await encryptForCategory('warranties', data);
-      dualPublish = { plainContent: JSON.stringify(data) };
     } else {
       // Store data in plaintext tags
       tags.push(['name', data.name]);
@@ -344,7 +342,6 @@ export function useWarrantyActions() {
       kind: WARRANTY_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {
@@ -370,10 +367,8 @@ export function useWarrantyActions() {
 
     let content = '';
 
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption && shouldEncrypt('warranties')) {
       content = await encryptForCategory('warranties', data);
-      dualPublish = { plainContent: JSON.stringify(data) };
     } else {
       // Store data in plaintext tags
       tags.push(['name', data.name]);
@@ -421,7 +416,6 @@ export function useWarrantyActions() {
       kind: WARRANTY_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {

@@ -210,9 +210,7 @@ export function useApplianceActions() {
 
     let content = '';
 
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption && shouldEncrypt('appliances')) {
-      // Store data in encrypted content; optional plain copy to private relays
       const applianceData: ApplianceData = {
         model: data.model,
         manufacturer: data.manufacturer,
@@ -223,7 +221,6 @@ export function useApplianceActions() {
         manualUrl: data.manualUrl,
       };
       content = await encryptForCategory('appliances', applianceData);
-      dualPublish = { plainContent: JSON.stringify(applianceData) };
     } else {
       // Store data in plaintext tags (legacy format)
       tags.push(['model', data.model]);
@@ -240,7 +237,6 @@ export function useApplianceActions() {
       kind: APPLIANCE_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     // Cache the new event immediately
@@ -267,7 +263,6 @@ export function useApplianceActions() {
 
     let content = '';
 
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption && shouldEncrypt('appliances')) {
       const applianceData: ApplianceData = {
         model: data.model,
@@ -279,7 +274,6 @@ export function useApplianceActions() {
         manualUrl: data.manualUrl,
       };
       content = await encryptForCategory('appliances', applianceData);
-      dualPublish = { plainContent: JSON.stringify(applianceData) };
     } else {
       tags.push(['model', data.model]);
       if (data.manufacturer) tags.push(['manufacturer', data.manufacturer]);
@@ -295,7 +289,6 @@ export function useApplianceActions() {
       kind: APPLIANCE_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     // Cache the updated event immediately

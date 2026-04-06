@@ -107,7 +107,7 @@ export function getLogicalKey(event: NostrEvent): string {
 
 /**
  * Dedupe events by logical key, preferring plaintext so we avoid unnecessary decryption.
- * Use before caching when dual-publish produces both plain (on private) and encrypted (on public) copies.
+ * Use before caching when multiple signed variants share the same logical key (e.g. same addressable `d` tag).
  */
 export function dedupeEventsByLogicalKey(events: NostrEvent[]): NostrEvent[] {
   const byKey = new Map<string, NostrEvent>();

@@ -200,10 +200,8 @@ export function useProjectTaskActions() {
 
     let content = '';
 
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption && shouldEncrypt('projects')) {
       content = await encryptForCategory('projects', data);
-      dualPublish = { plainContent: JSON.stringify(data) };
     } else {
       tags.push(['description', data.description]);
       tags.push(['is_completed', data.isCompleted ? 'true' : 'false']);
@@ -216,7 +214,6 @@ export function useProjectTaskActions() {
       kind: PROJECT_TASK_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {

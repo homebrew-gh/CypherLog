@@ -233,11 +233,9 @@ export function useProjectEntryActions() {
     ];
 
     let content = '';
-    let dualPublish: { plainContent: string } | undefined;
 
     if (useEncryption && shouldEncrypt('projects')) {
       content = await encryptForCategory('projects', data);
-      dualPublish = { plainContent: JSON.stringify(data) };
     } else {
       // Store data in plaintext tags
       tags.push(['entry_date', data.entryDate]);
@@ -255,7 +253,6 @@ export function useProjectEntryActions() {
       kind: PROJECT_ENTRY_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {

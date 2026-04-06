@@ -207,10 +207,8 @@ export function useProjectMaterialActions() {
 
     let content = '';
 
-    let dualPublish: { plainContent: string } | undefined;
     if (useEncryption && shouldEncrypt('projects')) {
       content = await encryptForCategory('projects', data);
-      dualPublish = { plainContent: JSON.stringify(data) };
     } else {
       tags.push(['name', data.name]);
       tags.push(['category', data.category]);
@@ -230,7 +228,6 @@ export function useProjectMaterialActions() {
       kind: PROJECT_MATERIAL_KIND,
       content,
       tags,
-      ...(dualPublish && { dualPublish }),
     });
 
     if (event) {

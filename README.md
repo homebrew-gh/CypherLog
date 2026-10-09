@@ -185,6 +185,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+## Part of the homebrew suite
+
+This app is one of a set of self-hosted, Nostr-based apps that share one identity and one personal relay. The suite-level plan — end goal, architecture, how each app fits — lives in [homebrew-suite](https://github.com/homebrew-gh/homebrew-suite) (`PLAN.md`).
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
